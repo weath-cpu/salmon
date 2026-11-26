@@ -390,6 +390,11 @@ enum Value : int {
   MidgameLimit  = 15258, EndgameLimit  = 3915
 };
 
+// Effect applied to the pieces between the origin and destination of a move
+enum MoveEffectKind : int {
+  MOVE_EFFECT_NONE, MOVE_EFFECT_SWEEP, MOVE_EFFECT_FLIP, MOVE_EFFECT_MORPH
+};
+
 constexpr int PIECE_TYPE_BITS = 6; // PIECE_TYPE_NB = pow(2, PIECE_TYPE_BITS)
 
 enum PieceType {

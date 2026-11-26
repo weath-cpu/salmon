@@ -333,8 +333,9 @@ void PieceMap::init(const Variant* v) {
   for (PieceType pt = CUSTOM_PIECES; pt <= CUSTOM_PIECES_END; ++pt)
   {
       PieceInfo* p = from_betza(v != nullptr ? v->customPiece[pt - CUSTOM_PIECES] : "", "");
-      // Sweeping pieces need unblocked rays to reach past what they destroy
-      if (v != nullptr && (v->sweepTypes & piece_set(pt)))
+      // Pieces with a move effect need unblocked rays to reach the pieces they
+      // affect on the way
+      if (v != nullptr && (v->effectTypes & piece_set(pt)))
           p->beam = true;
       add(pt, p);
   }

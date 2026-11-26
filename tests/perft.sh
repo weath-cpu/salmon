@@ -227,6 +227,20 @@ if [[ $1 == "all" || $1 == "variant" ]]; then
   expect perft.exp tank "fen k7/8/8/8/4q~3/3pp3/2P5/K3N3 w - - 0 1" 4 137310 false variants.ini > /dev/null
 fi
 
+# user-defined variants loaded from variants.ini (transforming move effects)
+if [[ $1 == "all" || $1 == "variant" ]]; then
+  # flipper = unblocked bishop that converts the pieces it passes to its own side
+  expect perft.exp flipper startpos 3 8842 false variants.ini > /dev/null
+  # e1c3 passes the black pawn on d2 and turns it into a white pawn, so unmake
+  # has to restore the color of the passed piece
+  expect perft.exp flipper "fen k7/8/8/8/8/8/3p4/K3A3 w - - 0 1" 4 5460 false variants.ini > /dev/null
+  # converter = rook-like piece that turns the pieces it passes into queens
+  expect perft.exp converter startpos 3 8622 false variants.ini > /dev/null
+  expect perft.exp converter "fen k7/8/8/8/8/8/3p4/K3C3 w - - 0 1" 4 14240 false variants.ini > /dev/null
+  # e1e4 passes the black pawn on e3, which becomes a black queen
+  expect perft.exp converter "fen k7/8/8/8/8/4p3/8/K3C3 w - - 0 1" 4 31711 false variants.ini > /dev/null
+fi
+
 rm perft.exp
 
 echo "perft testing OK"

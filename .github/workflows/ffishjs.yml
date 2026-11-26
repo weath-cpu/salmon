@@ -43,6 +43,9 @@ jobs:
       - name: Run unit tests
         working-directory: tests/js
         run: npm test
+      - name: Run the user-defined variant example
+        working-directory: tests/js
+        run: node variants-example.js
 
   build:
     runs-on: ubuntu-24.04

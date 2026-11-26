@@ -106,18 +106,19 @@ void MovePicker::score() {
 
   for (auto& m : *this)
   {
-      // Material a sweeping move removes on its way is as good as a capture
-      const int sweptValue = int(pos.sweep_value(m));
+      // Material a move effect gains on its way is as good as a capture
+      const int effectValue = int(pos.effect_value(m));
 
       if constexpr (Type == CAPTURES)
           m.value =  int(PieceValue[MG][pos.piece_on(to_sq(m))]) * 6
                    + (*gateHistory)[pos.side_to_move()][gating_square(m)]
                    + (*captureHistory)[pos.moved_piece(m)][to_sq(m)][type_of(pos.piece_on(to_sq(m)))]
-                   + 6 * sweptValue;
+                   + 6 * effectValue;
 
       else if constexpr (Type == QUIETS)
-          // Sweeping moves are generated as quiet moves when they land on an
-          // empty square, so they need to be sorted ahead of all other quiets
+          // Moves with a move effect are generated as quiet moves when they
+          // land on an empty square, so they need to be sorted ahead of all
+          // other quiets
           m.value =      (*mainHistory)[pos.side_to_move()][from_to(m)]
                    +     (*gateHistory)[pos.side_to_move()][gating_square(m)]
                    + 2 * (*continuationHistory[0])[history_slot(pos.moved_piece(m))][to_sq(m)]
@@ -125,18 +126,20 @@ void MovePicker::score() {
                    +     (*continuationHistory[3])[history_slot(pos.moved_piece(m))][to_sq(m)]
                    +     (*continuationHistory[5])[history_slot(pos.moved_piece(m))][to_sq(m)]
                    + (ply < MAX_LPH ? std::min(4, depth / 3) * (*lowPlyHistory)[ply][from_to(m)] : 0)
-                   + (sweptValue ? (1 << 20) + 6 * sweptValue : 0);
+                   + (pos.effect_piece(type_of(pos.moved_piece(m)))
+                        ? (1 << 20) + 6 * effectValue : 0);
 
       else // Type == EVASIONS
       {
           if (pos.capture(m))
               m.value =  PieceValue[MG][pos.piece_on(to_sq(m))]
                        - Value(type_of(pos.moved_piece(m)))
-                       + 6 * sweptValue;
+                       + 6 * effectValue;
           else
               m.value =      (*mainHistory)[pos.side_to_move()][from_to(m)]
                        + 2 * (*continuationHistory[0])[history_slot(pos.moved_piece(m))][to_sq(m)]
-                       + (sweptValue ? (1 << 20) + 6 * sweptValue : 0)
+                       + (pos.effect_piece(type_of(pos.moved_piece(m)))
+                            ? (1 << 20) + 6 * effectValue : 0)
                        - (1 << 28);
       }
   }

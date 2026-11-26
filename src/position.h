@@ -76,6 +76,9 @@ struct StateInfo {
   Bitboard   flippedPieces;
   // Squares cleared by a sweeping move, restored from unpromotedBycatch
   Bitboard   sweptSquares;
+  // Squares whose piece a transforming move effect replaced, restored from
+  // unpromotedBycatch
+  Bitboard   transformedSquares;
   Bitboard   pseudoRoyalCandidates;
   Bitboard   pseudoRoyals;
   OptBool    legalCapture;
@@ -143,7 +146,11 @@ public:
   bool mandatory_piece_promotion() const;
   bool piece_demotion() const;
   bool blast_on_capture() const;
+  bool effect_piece(PieceType pt) const;
   bool sweep_piece(PieceType pt) const;
+  bool flip_piece(PieceType pt) const;
+  bool morph_piece(PieceType pt) const;
+  PieceType morph_target(PieceType pt) const;
   PieceSet blast_immune_types() const;
   PieceSet mutually_immune_types() const;
   EndgameEval endgame_eval() const;
@@ -282,7 +289,9 @@ public:
   Bitboard attacks_from(Color c, PieceType pt, Square s) const;
   Bitboard moves_from(Color c, PieceType pt, Square s) const;
   Bitboard swept_squares(Move m) const;
-  Value sweep_value(Move m) const;
+  Bitboard transformed_squares(Move m) const;
+  Bitboard flipped_squares(Move m) const;
+  Value effect_value(Move m) const;
   Bitboard slider_blockers(Bitboard sliders, Square s, Bitboard& pinners, Color c) const;
 
   // Properties of moves
@@ -516,9 +525,29 @@ inline bool Position::blast_on_capture() const {
   return var->blastOnCapture;
 }
 
+inline bool Position::effect_piece(PieceType pt) const {
+  assert(var != nullptr);
+  return var->effectTypes & piece_set(pt);
+}
+
 inline bool Position::sweep_piece(PieceType pt) const {
   assert(var != nullptr);
   return var->sweepTypes & pt;
+}
+
+inline bool Position::flip_piece(PieceType pt) const {
+  assert(var != nullptr);
+  return var->flipTypes & piece_set(pt);
+}
+
+inline bool Position::morph_piece(PieceType pt) const {
+  assert(var != nullptr);
+  return var->morphTypes & piece_set(pt);
+}
+
+inline PieceType Position::morph_target(PieceType pt) const {
+  assert(var != nullptr);
+  return var->moveEffectInto[pt];
 }
 
 inline PieceSet Position::blast_immune_types() const {
@@ -1472,6 +1501,29 @@ inline Bitboard Position::swept_squares(Move m) const {
       return Bitboard(0);
 
   return between_bb(from_sq(m), to_sq(m)) & ~square_bb(to_sq(m)) & pieces();
+}
+
+/// Position::transformed_squares() returns the squares of the opponent pieces a
+/// transforming move effect (flip or morph) replaces on the way to the
+/// destination square. Kings are never affected.
+
+inline Bitboard Position::transformed_squares(Move m) const {
+
+  if (   type_of(m) != NORMAL
+      || !((var->flipTypes | var->morphTypes) & piece_set(type_of(moved_piece(m)))))
+      return Bitboard(0);
+
+  return between_bb(from_sq(m), to_sq(m)) & ~square_bb(to_sq(m))
+       & pieces(~color_of(moved_piece(m))) & ~pieces(KING) & ~pieces(var->kingType);
+}
+
+
+/// Position::flipped_squares() returns the squares of the pieces that change
+/// color due to a move effect, i.e., that no longer attack for their old side.
+
+inline Bitboard Position::flipped_squares(Move m) const {
+
+  return flip_piece(type_of(moved_piece(m))) ? transformed_squares(m) : Bitboard(0);
 }
 
 inline Square Position::capture_square(Square to) const {

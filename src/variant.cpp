@@ -1970,6 +1970,44 @@ void VariantMap::init() {
 
 // Pre-calculate derived properties
 Variant* Variant::conclude() {
+    // Derive the piece sets of the individual move effects
+    effectTypes = sweepTypes = flipTypes = morphTypes = NO_PIECE_SET;
+    for (PieceSet ps = pieceTypes; ps;)
+    {
+        PieceType pt = pop_lsb(ps);
+        switch (moveEffect[pt])
+        {
+        case MOVE_EFFECT_SWEEP: sweepTypes |= piece_set(pt); break;
+        case MOVE_EFFECT_FLIP:  flipTypes  |= piece_set(pt); break;
+        case MOVE_EFFECT_MORPH: morphTypes |= piece_set(pt); break;
+        default: break;
+        }
+        if (moveEffect[pt] != MOVE_EFFECT_NONE)
+            effectTypes |= piece_set(pt);
+    }
+
+    // Custom piece letters are defined by the configuration, so add missing ones
+    // to the XBoard piece table in the first free slot of each color instead of
+    // requiring the table to be edited by hand whenever a new letter is used.
+    if (pieceToCharTable != "-" && pieceToCharTable.size() % 2 == 0)
+    {
+        const size_t half = pieceToCharTable.size() / 2;
+        for (PieceSet ps = pieceTypes; ps;)
+        {
+            PieceType pt = pop_lsb(ps);
+            const char upper = toupper(pieceToChar[make_piece(WHITE, pt)]);
+            const char lower = tolower(pieceToChar[make_piece(BLACK, pt)]);
+            if (upper == ' ' || pieceToCharTable.find(upper) != std::string::npos)
+                continue;
+            const size_t slot = pieceToCharTable.find('.');
+            // Never overwrite an existing mapping, e.g. an own image per piece
+            if (slot == std::string::npos || slot >= half)
+                continue;
+            pieceToCharTable[slot] = upper;
+            pieceToCharTable[slot + half] = lower;
+        }
+    }
+
     // Enforce consistency to allow runtime optimizations
     if (!doubleStep)
         doubleStepRegion[WHITE] = doubleStepRegion[BLACK] = 0;

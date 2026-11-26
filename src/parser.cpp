@@ -421,7 +421,9 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
     parse_attribute("mutuallyImmuneTypes", v->mutuallyImmuneTypes, v->pieceToChar);
     parse_attribute("petrifyOnCaptureTypes", v->petrifyOnCaptureTypes, v->pieceToChar);
     parse_attribute("petrifyBlastPieces", v->petrifyBlastPieces);
-    // Move effects, one entry per slot: "<piece type>:<effect>", e.g. "t:sweep"
+    // Move effects, one entry per slot: "<piece type>:<effect>", e.g. "t:sweep".
+    // Effects taking a parameter use "<piece type>:<effect>=<parameter>",
+    // e.g. "c:morph=q" to turn the affected pieces into queens.
     for (int i = 1; i <= CUSTOM_PIECES_NB; ++i)
     {
         const std::string key = "moveEffect" + std::to_string(i);
@@ -430,16 +432,52 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
             continue;
         const std::string& value = it_effect->second;
         const std::string::size_type sep = value.find(':');
-        const std::string effect = sep == std::string::npos ? "" : value.substr(sep + 1);
+        std::string effect = sep == std::string::npos ? "" : value.substr(sep + 1);
+        std::string parameter;
+        const std::string::size_type assign = effect.find('=');
+        if (assign != std::string::npos)
+        {
+            parameter = effect.substr(assign + 1);
+            effect = effect.substr(0, assign);
+        }
         const size_t idx = sep == std::string::npos || value.empty() ? std::string::npos
                           : v->pieceToChar.find(toupper(value[0]));
         if (idx == std::string::npos || idx == ALL_PIECES)
         {
             if (DoCheck)
                 std::cerr << key << " - Invalid piece type: " << value << std::endl;
+            continue;
         }
-        else if (effect == "sweep")
-            v->sweepTypes |= piece_set(PieceType(idx));
+        if (effect == "sweep" || effect == "flip" || effect == "morph")
+        {
+            const MoveEffectKind kind = effect == "sweep" ? MOVE_EFFECT_SWEEP
+                                     : effect == "flip"  ? MOVE_EFFECT_FLIP
+                                                         : MOVE_EFFECT_MORPH;
+            PieceType into = NO_PIECE_TYPE;
+            if (kind == MOVE_EFFECT_MORPH)
+            {
+                const size_t target = parameter.empty() ? std::string::npos
+                                    : v->pieceToChar.find(toupper(parameter[0]));
+                if (target == std::string::npos || target == ALL_PIECES || target >= CUSTOM_PIECES)
+                {
+                    if (DoCheck)
+                        std::cerr << key << " - Invalid target piece type: " << parameter << std::endl;
+                    continue;
+                }
+                into = PieceType(target);
+            }
+            else if (!parameter.empty() && DoCheck)
+                std::cerr << key << " - Unexpected move effect parameter: " << parameter << std::endl;
+
+            if (v->moveEffect[idx] != MOVE_EFFECT_NONE)
+            {
+                if (DoCheck)
+                    std::cerr << key << " - Piece type already has a move effect: " << value << std::endl;
+                continue;
+            }
+            v->moveEffect[idx] = kind;
+            v->moveEffectInto[idx] = into;
+        }
         else if (DoCheck)
             std::cerr << key << " - Invalid move effect: " << effect << std::endl;
     }
@@ -673,23 +711,41 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
         }
     }
 
-    // Constraints of the sweep move effect
-    if (v->sweepTypes)
+    // Constraints of the move effects
+    if (v->effectTypes || std::any_of(std::begin(v->moveEffect), std::end(v->moveEffect),
+                                      [](MoveEffectKind e) { return e != MOVE_EFFECT_NONE; }))
     {
-        if ((v->pieceTypes & KING) && (v->sweepTypes & piece_set(v->kingType)))
-            errors.push_back("Kings and royal pieces can not use the sweep move effect.");
-        if (v->capturesToHand)
+        if ((v->pieceTypes & KING) && (v->effectTypes & piece_set(v->kingType)))
+            errors.push_back("Kings and royal pieces can not use move effects.");
+        if (v->capturesToHand && v->sweepTypes)
             errors.push_back("capturesToHand is not supported with the sweep move effect.");
-        // The swept pieces are tracked in the blast bookkeeping
+        // The affected pieces are tracked in the blast bookkeeping
         if (v->blastOnCapture || v->petrifyOnCaptureTypes)
-            errors.push_back("The sweep move effect can not be combined with blast or petrification.");
-        for (PieceSet ps = v->sweepTypes; ps;)
+            errors.push_back("Move effects can not be combined with blast or petrification.");
+        for (PieceType pt = PAWN; pt <= CUSTOM_PIECES_END; ++pt)
+        {
+            if (v->moveEffect[pt] == MOVE_EFFECT_NONE)
+                continue;
+            if (!is_custom(pt) || pt > CUSTOM_PIECES_END)
+                errors.push_back("Move effects require a custom piece.");
+            else if (!(v->pieceTypes & piece_set(pt)))
+                errors.push_back("Move effect on a piece type that is not part of the variant.");
+            if (v->moveEffect[pt] != MOVE_EFFECT_MORPH)
+                continue;
+            const PieceType into = v->moveEffectInto[pt];
+            if (   into == NO_PIECE_TYPE
+                || !(v->pieceTypes & piece_set(into))
+                || into == v->kingType
+                || into == pt)
+                errors.push_back("Invalid target piece type for the morph move effect.");
+        }
+        for (PieceSet ps = v->effectTypes; ps;)
         {
             PieceType pt = pop_lsb(ps);
             if (!is_custom(pt) || pt > CUSTOM_PIECES_END)
-                errors.push_back("The sweep move effect requires a custom piece.");
+                continue;
             else if (v->customPiece[pt - CUSTOM_PIECES].find('>') != std::string::npos)
-                errors.push_back("The sweep move effect can not be used with bent (multi-leg) pieces.");
+                errors.push_back("Move effects can not be used with bent (multi-leg) pieces.");
         }
     }
 

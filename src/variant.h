@@ -68,8 +68,17 @@ struct Variant {
   PieceSet mutuallyImmuneTypes = NO_PIECE_SET;
   PieceSet petrifyOnCaptureTypes = NO_PIECE_SET;
   bool petrifyBlastPieces = false;
-  // Piece types whose moves remove all pieces between origin and destination
+  // Effect applied to the opponent pieces between origin and destination of a
+  // move, defined per piece type (see the moveEffect* options in variants.ini)
+  MoveEffectKind moveEffect[PIECE_TYPE_NB] = {};
+  // Piece type of the MOVE_EFFECT_MORPH effect for the respective piece type
+  PieceType moveEffectInto[PIECE_TYPE_NB] = {};
+  // Piece types using any move effect, derived from moveEffect in conclude()
+  PieceSet effectTypes = NO_PIECE_SET;
+  // Piece types using the respective effect, derived from moveEffect in conclude()
   PieceSet sweepTypes = NO_PIECE_SET;
+  PieceSet flipTypes = NO_PIECE_SET;
+  PieceSet morphTypes = NO_PIECE_SET;
   bool doubleStep = true;
   Bitboard doubleStepRegion[COLOR_NB] = {Rank2BB, Rank7BB};
   Bitboard tripleStepRegion[COLOR_NB] = {};

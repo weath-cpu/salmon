@@ -43,6 +43,23 @@ function main() {
     throw new Error(`sweep not applied, expected ${expected}, got ${fen}`);
 
   console.log('sweep OK');
+
+  // The flipper is defined with the "flip" move effect: e1c3 passes the black
+  // pawn on d2 and turns it into a white pawn.
+  const flipper = new ffish.Board('flipper', 'k7/8/8/8/8/8/3p4/K3A3 w - - 0 1');
+
+  if (!flipper.push('e1c3'))
+    throw new Error('ffish.js rejected the flipping move e1c3');
+
+  const flippedFen = flipper.fen();
+  flipper.delete();
+  console.log('after e1c3 (flipper):', flippedFen);
+
+  const expectedFlip = 'k7/8/8/8/8/2A5/3P4/K7 b - - 0 1';
+  if (flippedFen !== expectedFlip)
+    throw new Error(`flip not applied, expected ${expectedFlip}, got ${flippedFen}`);
+
+  console.log('flip OK');
 }
 
 if (typeof ffish.Board === 'function')

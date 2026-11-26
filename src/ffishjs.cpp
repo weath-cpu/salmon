@@ -18,6 +18,7 @@
 
 #include <emscripten.h>
 #include <emscripten/bind.h>
+#include <memory>
 #include <vector>
 #include <string>
 #include <sstream>
@@ -517,7 +518,10 @@ namespace ffish {
 class Game {
 private:
   std::unordered_map<std::string, std::string> header;
-  std::unique_ptr<Board> board;
+  // A shared pointer instead of a unique one, because embind requires the type
+  // it returns to JavaScript to be copyable. Copies share the board, which is
+  // what the API expects: a Game object is read-only after parsing.
+  std::shared_ptr<Board> board;
   std::string variant = "chess";
   std::string fen = ""; // start pos
   bool is960 = false;
@@ -602,7 +606,7 @@ Game read_game_pgn(std::string pgn) {
         if (it != game.header.end())
           game.fen = it->second;
 
-        game.board = std::make_unique<Board>(game.variant, game.fen, game.is960);
+        game.board = std::make_shared<Board>(game.variant, game.fen, game.is960);
         game.parsedGame = true;
       }
 

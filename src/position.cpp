@@ -1474,7 +1474,8 @@ bool Position::legal(Move m) const {
       janggiCannons ^= to;
 
   // A non-king move is legal if the king is not under attack after the move.
-  return !(attackers_to(square<KING>(us), occupied, ~us, janggiCannons) & ~SquareBB[to]);
+  // Pieces flipped by the move no longer attack for the opponent.
+  return !(attackers_to(square<KING>(us), occupied, ~us, janggiCannons) & ~SquareBB[to] & ~flipped_squares(m));
 }
 
 
@@ -1760,6 +1761,7 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
   st = &newSt;
   st->move = m;
   st->sweptSquares = 0;
+  st->transformedSquares = 0;
 
   // Increment ply counters. In particular, rule50 will be reset to zero later on
   // in case of a capture or a pawn move.
@@ -2347,6 +2349,76 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
           st->rule50 = 0;
   }
 
+  // Replace the pieces affected by a transforming move effect
+  if (type_of(m) == NORMAL && (var->flipTypes | var->morphTypes) & piece_set(type_of(pc)))
+  {
+      const bool flips = bool(var->flipTypes & piece_set(type_of(pc)));
+      Bitboard transformed = between_bb(from, to) & ~square_bb(to) & pieces(them)
+                           & ~pieces(KING) & ~pieces(var->kingType);
+      while (transformed)
+      {
+          Square tsq = pop_lsb(transformed);
+          Piece tpc = piece_on(tsq);
+          Piece npc = flips ? ~tpc : make_piece(color_of(tpc), morph_target(type_of(pc)));
+          if (npc == tpc)
+              continue;
+
+          if (type_of(tpc) != PAWN)
+              st->nonPawnMaterial[them] -= PieceValue[MG][tpc];
+          if (type_of(npc) != PAWN)
+              st->nonPawnMaterial[color_of(npc)] += PieceValue[MG][npc];
+
+          if (Eval::useNNUE && dp.dirty_num + 2 <= 12)
+          {
+              dp.piece[dp.dirty_num] = tpc;
+              dp.handPiece[dp.dirty_num] = NO_PIECE;
+              dp.from[dp.dirty_num] = tsq;
+              dp.to[dp.dirty_num] = SQ_NONE;
+              dp.dirty_num++;
+              dp.piece[dp.dirty_num] = npc;
+              dp.handPiece[dp.dirty_num] = NO_PIECE;
+              dp.from[dp.dirty_num] = SQ_NONE;
+              dp.to[dp.dirty_num] = tsq;
+              dp.dirty_num++;
+          }
+
+          // Store the original piece in the same format as the blast pieces,
+          // so that undo_move() can restore promoted pieces correctly
+          bool transformedPromoted = is_promoted(tsq);
+          Piece unpromotedTransformed = unpromoted_piece_on(tsq);
+          st->unpromotedBycatch[tsq] = unpromotedTransformed ? unpromotedTransformed : tpc;
+          if (unpromotedTransformed)
+              st->demotedBycatch |= tsq;
+          else if (transformedPromoted)
+              st->promotedBycatch |= tsq;
+          st->transformedSquares |= tsq;
+
+          remove_piece(tsq);
+          board[tsq] = NO_PIECE;
+          k ^= Zobrist::psq[tpc][tsq];
+          st->materialKey ^= Zobrist::psq[tpc][pieceCount[tpc]];
+          if (type_of(tpc) == PAWN)
+              st->pawnKey ^= Zobrist::psq[tpc][tsq];
+
+          if (st->castlingRights && castlingRightsMask[tsq])
+          {
+              k ^= Zobrist::castling[st->castlingRights];
+              st->castlingRights &= ~castlingRightsMask[tsq];
+              k ^= Zobrist::castling[st->castlingRights];
+          }
+
+          put_piece(npc, tsq);
+          k ^= Zobrist::psq[npc][tsq];
+          st->materialKey ^= Zobrist::psq[npc][pieceCount[npc]];
+          if (type_of(npc) == PAWN)
+              st->pawnKey ^= Zobrist::psq[npc][tsq];
+      }
+
+      // A transformation is irreversible
+      if (st->transformedSquares)
+          st->rule50 = 0;
+  }
+
   // Add gated wall square
   // if wallOrMove, only actually place the wall if they gave up their move
   if (walling() && (!var->wallOrMove || (from==to)))
@@ -2470,6 +2542,19 @@ void Position::undo_move(Move m) {
                                            : unpromotedSpc;
       bool isPromoted = (st->promotedBycatch | st->demotedBycatch) & ssq;
       put_piece(spc, ssq, isPromoted, st->demotedBycatch & ssq ? unpromotedSpc : NO_PIECE);
+  }
+
+  // Restore the pieces replaced by a transforming move effect
+  for (Bitboard transformed = st->transformedSquares; transformed; )
+  {
+      Square tsq = pop_lsb(transformed);
+      Piece unpromotedTpc = st->unpromotedBycatch[tsq];
+      Piece tpc = st->demotedBycatch & tsq ? make_piece(color_of(unpromotedTpc), promoted_piece_type(type_of(unpromotedTpc)))
+                                           : unpromotedTpc;
+      bool isPromoted = (st->promotedBycatch | st->demotedBycatch) & tsq;
+      remove_piece(tsq);
+      board[tsq] = NO_PIECE;
+      put_piece(tpc, tsq, isPromoted, st->demotedBycatch & tsq ? unpromotedTpc : NO_PIECE);
   }
 
   // Remove gated piece
@@ -2686,15 +2771,31 @@ Key Position::key_after(Move m) const {
 }
 
 
-/// Position::sweep_value() returns the value of the material a sweeping move
-/// removes on its way. Unlike ordinary captures this is not part of an
-/// exchange, i.e., the opponent can never recapture the swept pieces.
+/// Position::effect_value() returns the material a move effect gains on the way
+/// to the destination square, i.e., the value of the swept pieces, or the value
+/// difference of the transformed pieces. Unlike ordinary captures this is not
+/// part of an exchange, i.e., the opponent can never recapture those pieces.
 
-Value Position::sweep_value(Move m) const {
+Value Position::effect_value(Move m) const {
 
   Value result = VALUE_ZERO;
-  for (Bitboard b = swept_squares(m); b; )
-      result += CapturePieceValue[MG][piece_on(pop_lsb(b))];
+  const PieceType moved = type_of(moved_piece(m));
+
+  if (sweep_piece(moved))
+  {
+      for (Bitboard b = swept_squares(m); b; )
+          result += CapturePieceValue[MG][piece_on(pop_lsb(b))];
+      return result;
+  }
+
+  for (Bitboard b = transformed_squares(m); b; )
+  {
+      Square s = pop_lsb(b);
+      Piece pc = piece_on(s);
+      Piece into = flip_piece(moved) ? ~pc : make_piece(color_of(pc), morph_target(moved));
+      if (into != pc)
+          result += CapturePieceValue[MG][into] - CapturePieceValue[MG][pc];
+  }
 
   return result;
 }
@@ -2809,11 +2910,13 @@ bool Position::see_ge(Move m, Value threshold) const {
       || count<CLOBBER_PIECE>() == count<ALL_PIECES>())
       return VALUE_ZERO >= threshold;
 
-  // The pieces a sweeping move removes are gained before the exchange on 'to'
+  // The pieces a move effect removes or transforms are gained before the
+  // exchange on 'to'
   const Bitboard swept = swept_squares(m);
-  const int sweptValue = int(sweep_value(m));
+  const Bitboard flipped = flipped_squares(m);
+  const int effectValue = int(effect_value(m));
 
-  int swap = PieceValue[MG][piece_on(to)] + sweptValue - threshold;
+  int swap = PieceValue[MG][piece_on(to)] + effectValue - threshold;
   if (swap < 0)
       return false;
 
@@ -2827,8 +2930,9 @@ bool Position::see_ge(Move m, Value threshold) const {
 
   Bitboard occupied = ((type_of(m) != DROP ? pieces() ^ from : pieces()) ^ to) & ~swept;
   Color stm = color_of(moved_piece(m));
-  // Swept pieces are gone before the exchange and can not recapture
-  Bitboard attackers = attackers_to(to, occupied) & ~swept;
+  // Swept pieces are gone before the exchange and can not recapture, flipped
+  // pieces defend for the other side
+  Bitboard attackers = attackers_to(to, occupied) & ~swept & ~flipped;
   Bitboard stmAttackers, bb;
   int res = 1;
 
