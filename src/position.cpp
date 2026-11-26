@@ -1139,6 +1139,46 @@ Bitboard Position::checked_pseudo_royals(Color c) const {
 }
 
 
+/// Position::restricted_capture() tests whether a capture is not allowed
+/// because the captured piece type may only be captured by the king.
+
+bool Position::restricted_capture(Move m) const {
+
+  if (!var->kingOnlyCaptureTypes || !capture(m))
+      return false;
+
+  if (type_of(moved_piece(m)) == KING)
+      return false;
+
+  Square capsq = type_of(m) == EN_PASSANT ? capture_square(to_sq(m)) : to_sq(m);
+  return bool(var->kingOnlyCaptureTypes & type_of(piece_on(capsq)));
+}
+
+
+/// Position::has_capture() tests whether the side to move has a legal capture
+/// with one of the given piece types.
+
+bool Position::has_capture(PieceSet types) const {
+
+  for (PieceSet ps = types & piece_types(); ps;)
+  {
+      PieceType pt = pop_lsb(ps);
+      for (Bitboard b = pieces(sideToMove, pt); b;)
+      {
+          Square from = pop_lsb(b);
+          for (Bitboard targets = attacks_from(sideToMove, pt, from) & pieces(~sideToMove); targets;)
+          {
+              Square to = pop_lsb(targets);
+              // A capture of a piece type reserved for the king is no capture option
+              if (legal(make_move(from, to)))
+                  return true;
+          }
+      }
+  }
+  return false;
+}
+
+
 /// Position::legal() tests whether a pseudo-legal move is legal
 
 bool Position::legal(Move m) const {
@@ -1162,6 +1202,17 @@ bool Position::legal(Move m) const {
   if (   must_capture() && !capture(m)
       && !(must_drop() && type_of(m) == DROP && count_in_hand(us, var->mustDropType) > 0)
       && has_capture())
+      return false;
+
+  // Captures reserved for the king
+  if (restricted_capture(m))
+      return false;
+
+  // Pieces that have to capture when they can
+  if (   !capture(m)
+      && type_of(m) != DROP
+      && (var->mustCapturePieceTypes & type_of(moved_piece(m)))
+      && has_capture(var->mustCapturePieceTypes))
       return false;
 
   // Illegal non-drop moves
@@ -1428,6 +1479,10 @@ bool Position::pseudo_legal(const Move m) const {
 
   // Illegal moves to squares outside of board or to wall squares
   if (!(board_bb() & to))
+      return false;
+
+  // Captures reserved for the king
+  if (restricted_capture(m))
       return false;
 
   // Use a fast check for piece drops
@@ -1706,6 +1761,7 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
   Square from = from_sq(m);
   Square to = to_sq(m);
   Piece pc = moved_piece(m);
+  st->movedPiece = pc;
   Piece captured = piece_on(type_of(m) == EN_PASSANT ? capture_square(to) : to);
   if (to == from)
   {
@@ -2923,16 +2979,46 @@ bool Position::is_immediate_game_end(Value& result, int ply) const {
   if (extinction_value() != VALUE_NONE && (!var->extinctionPseudoRoyal || blast_on_capture()))
   {
       for (Color c : { ~sideToMove, sideToMove })
-          for (PieceSet ps = extinction_piece_types(); ps;)
+      {
+          const int opponentCountRequired = var->extinctionOpponentPieceCount + (extinction_claim() && c == sideToMove);
+          bool extinct = false;
+
+          // Combined extinction: all extinctionPieceTypes form one single set,
+          // so all of them have to be gone instead of just one of them.
+          if (var->extinctionCombinedTypes)
           {
-              PieceType pt = pop_lsb(ps);
-              if (   count_with_hand( c, pt) <= var->extinctionPieceCount
-                  && count_with_hand(~c, pt) >= var->extinctionOpponentPieceCount + (extinction_claim() && c == sideToMove))
+              int ownCount = 0, opponentCount = 0;
+              for (PieceSet ps = extinction_piece_types(); ps;)
               {
-                  result = c == sideToMove ? extinction_value(ply) : -extinction_value(ply);
-                  return true;
+                  PieceType pt = pop_lsb(ps);
+                  ownCount += count_with_hand(c, pt);
+                  opponentCount += count_with_hand(~c, pt);
               }
+              extinct =  ownCount <= var->extinctionPieceCount && opponentCount >= opponentCountRequired;
           }
+          else
+              for (PieceSet ps = extinction_piece_types(); !extinct && ps;)
+              {
+                  PieceType pt = pop_lsb(ps);
+                  extinct =  count_with_hand( c, pt) <= var->extinctionPieceCount
+                          && count_with_hand(~c, pt) >= opponentCountRequired;
+              }
+
+          if (extinct)
+          {
+              result = c == sideToMove ? extinction_value(ply) : -extinction_value(ply);
+              return true;
+          }
+      }
+  }
+
+  // Win by capturing one of winOnCaptureTypes with winOnCaptureBy
+  if (   var->winOnCaptureBy && st->capturedPiece && st->pliesFromNull > 0
+      && type_of(st->movedPiece) == var->winOnCaptureBy
+      && (var->winOnCaptureTypes & type_of(st->capturedPiece)))
+  {
+      result = mate_in(ply);
+      return true;
   }
   // capture the flag
   // A flag win by the side to move is only possible if flagMove or flagPieceSafe are enabled

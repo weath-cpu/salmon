@@ -54,7 +54,7 @@ std::set<string> standard_variants = {
 
 void init_variant(const Variant* v) {
     pieceMap.init(v);
-    Bitboards::init_pieces();
+    Bitboards::init_pieces(v->maxFile, v->maxRank);
 }
 
 /// 'On change' actions, triggered by an option's value change

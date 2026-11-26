@@ -12,10 +12,11 @@ echo "perft testing started"
 
 cat << EOF > perft.exp
    set timeout 60
-   lassign \$argv var pos depth result chess960
+   lassign \$argv var pos depth result chess960 config
    if {\$chess960 eq ""} {set chess960 false}
    spawn ./stockfish
    send "setoption name UCI_Chess960 value \$chess960\\n"
+   if {\$config ne ""} {send "setoption name VariantPath value \$config\\n"}
    send "setoption name UCI_Variant value \$var\\n"
    send "position \$pos\\ngo perft \$depth\\n"
    expect "Nodes searched? \$result" {} timeout {exit 1}
@@ -203,6 +204,15 @@ fi
 if [[ $1 == "all" ]]; then
   expect perft.exp duck startpos 1 640 > /dev/null
   expect perft.exp amazons startpos 1 2176 > /dev/null
+fi
+
+# user-defined variants loaded from variants.ini (bent multi-leg pieces)
+if [[ $1 == "all" || $1 == "variant" ]]; then
+  expect perft.exp bowsman "fen k7/8/8/8/8/8/8/4KB2 w - - 0 1" 4 4841 false variants.ini > /dev/null
+  expect perft.exp bowsman "fen 7k/8/8/8/8/8/8/4KB2 w - - 0 1" 3 985 false variants.ini > /dev/null
+  expect perft.exp bowsman "fen k7/8/8/8/8/8/p7/4KB2 w - - 0 1" 3 1667 false variants.ini > /dev/null
+  # 7x8 board: the bowsman on e1 must stop at the g-file and not continue to h2
+  expect perft.exp bowsman-narrow "fen 6k/7/7/7/7/7/7/2K1B2 w - - 0 1" 3 862 false variants.ini > /dev/null
 fi
 
 rm perft.exp

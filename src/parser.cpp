@@ -531,6 +531,11 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
     parse_attribute("flagPieceBlockedWin", v->flagPieceBlockedWin);
     parse_attribute("flagMove", v->flagMove);
     parse_attribute("flagPieceSafe", v->flagPieceSafe);
+    parse_attribute("extinctionCombinedTypes", v->extinctionCombinedTypes);
+    parse_attribute("kingOnlyCaptureTypes", v->kingOnlyCaptureTypes, v->pieceToChar);
+    parse_attribute("mustCapturePieceTypes", v->mustCapturePieceTypes, v->pieceToChar);
+    parse_attribute("winOnCaptureBy", v->winOnCaptureBy, v->pieceToChar);
+    parse_attribute("winOnCaptureTypes", v->winOnCaptureTypes, v->pieceToChar);
     parse_attribute("checkCounting", v->checkCounting);
     parse_attribute("connectN", v->connectN);
     parse_attribute("connectPieceTypes", v->connectPieceTypes, v->pieceToChar);
@@ -622,6 +627,29 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
     // Check for limitations. These combinations of options are not supported
     // and would lead to crashes or incorrect move generation/game results,
     // so the variant is rejected (see VariantMap::parse_istream).
+
+    // Bent (multi-leg) pieces support neither promotions nor drops
+    for (PieceSet ps = v->pieceTypes; ps;)
+    {
+        PieceType pt = pop_lsb(ps);
+        if (   is_custom(pt)
+            && pt - CUSTOM_PIECES < CUSTOM_PIECES_NB
+            && v->customPiece[pt - CUSTOM_PIECES].find('>') != std::string::npos)
+        {
+            const std::string& notation = v->customPiece[pt - CUSTOM_PIECES];
+            if (!is_valid_bent_betza(notation))
+                errors.push_back("Invalid bent piece notation: " + notation);
+            else
+            {
+                if (   ((v->promotionPieceTypes[WHITE] | v->promotionPieceTypes[BLACK]) & piece_set(pt))
+                    || ((v->promotionPawnTypes[WHITE] | v->promotionPawnTypes[BLACK]) & piece_set(pt))
+                    || v->promotedPieceType[pt] != NO_PIECE_TYPE)
+                    errors.push_back("Bent (multi-leg) pieces do not support promotion.");
+                if (v->pieceDrops)
+                    errors.push_back("Bent (multi-leg) pieces do not support drops.");
+            }
+        }
+    }
 
     // Drops are generated without a gating square, but walling would still
     // place a wall on the square decoded from the drop move.

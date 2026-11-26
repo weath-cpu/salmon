@@ -50,9 +50,105 @@ namespace {
   };
   const std::string verticals = "fbvh";
   const std::string horizontals = "rlsh";
+  // Strict parser for two-leg (bent) piece notation "[mc]*<atom>><rider>".
+  // Only the first atom F or W and the rider R, B or Q are understood; any
+  // other character, including a modality after ">", makes the notation invalid.
+  struct BentBetza {
+      char firstAtom = 0;
+      char secondAtom = 0;
+      std::vector<MoveModality> modalities = {};
+  };
+
+  bool parse_bent_betza(const std::string& betza, BentBetza& parsed) {
+
+      const std::string::size_type sep = betza.find('>');
+      if (sep == std::string::npos || betza.find('>', sep + 1) != std::string::npos)
+          return false;
+
+      for (char c : betza.substr(0, sep))
+      {
+          if (c == 'm' || c == 'c')
+              parsed.modalities.push_back(c == 'c' ? MODALITY_CAPTURE : MODALITY_QUIET);
+          else if ((c == 'F' || c == 'W') && !parsed.firstAtom)
+              parsed.firstAtom = c;
+          else
+              return false;
+      }
+
+      for (char c : betza.substr(sep + 1))
+          if ((c == 'R' || c == 'B' || c == 'Q') && !parsed.secondAtom)
+              parsed.secondAtom = c;
+          else
+              return false;
+
+      // A bishop rider can not continue outwards from an orthogonal step
+      if (!parsed.firstAtom || !parsed.secondAtom || (parsed.firstAtom == 'W' && parsed.secondAtom == 'B'))
+          return false;
+
+      // No modality qualifier means m+c
+      if (parsed.modalities.empty())
+      {
+          parsed.modalities.push_back(MODALITY_QUIET);
+          parsed.modalities.push_back(MODALITY_CAPTURE);
+      }
+      return true;
+  }
+
+  // from_betza_bent creates a piece with two-leg (bent) moves from notation
+  // "<firstAtom>><secondAtom>", e.g. "F>R".
+  // The piece makes a mandatory single step of the first atom and then
+  // continues as a rider of the second atom, but only outwards, i.e. it may
+  // not turn back. E.g. "F>R" steps diagonally and then continues
+  // orthogonally away from the origin (northwest + north/west).
+  PieceInfo* from_betza_bent(const std::string& betza, const std::string& name) {
+      PieceInfo* p = new PieceInfo();
+      p->name = name;
+      p->betza = betza;
+
+      BentBetza parsed;
+      if (!parse_bent_betza(betza, parsed))
+          // Invalid notation is rejected by the variant parser before the piece is used
+          return p;
+
+      const std::vector<MoveModality>& moveModalities = parsed.modalities;
+      const char firstAtom = parsed.firstAtom;
+      const char secondAtom = parsed.secondAtom;
+
+      // First leg directions (white's perspective)
+      std::vector<std::pair<int, int>> firstDirs = {};
+      if (firstAtom == 'F')
+          firstDirs = {{1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
+      else if (firstAtom == 'W')
+          firstDirs = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+
+      for (const auto& d : firstDirs)
+      {
+          const int sx = d.first ? (d.first > 0 ? 1 : -1) : 0;
+          const int sy = d.second ? (d.second > 0 ? 1 : -1) : 0;
+          std::vector<std::pair<int, int>> secondDirs = {};
+          if (secondAtom == 'R' || secondAtom == 'Q')
+          {
+              if (sx) secondDirs.push_back({sx, 0});
+              if (sy) secondDirs.push_back({0, sy});
+          }
+          if (secondAtom == 'B' || secondAtom == 'Q')
+          {
+              if (sx && sy) secondDirs.push_back({sx, sy});
+          }
+          for (const auto& d2 : secondDirs)
+              for (MoveModality modality : moveModalities)
+                  p->bent[modality].push_back(BentLeg{d.first * FILE_NB + d.second,
+                                                      d2.first * FILE_NB + d2.second});
+      }
+      return p;
+  }
+
   // from_betza creates a piece by parsing Betza notation
   // https://en.wikipedia.org/wiki/Betza%27s_funny_notation
   PieceInfo* from_betza(const std::string& betza, const std::string& name) {
+      // Two-leg (bent) moves are a separate notation, e.g. "F>R"
+      if (betza.find('>') != std::string::npos)
+          return from_betza_bent(betza, name);
       PieceInfo* p = new PieceInfo();
       p->name = name;
       p->betza = betza;
@@ -184,6 +280,11 @@ namespace {
       p->betza = "mafsmafW"; // for compatibility with XBoard/Winboard
       return p;
   }
+}
+
+bool is_valid_bent_betza(const std::string& betza) {
+    BentBetza parsed;
+    return parse_bent_betza(betza, parsed);
 }
 
 void PieceMap::init(const Variant* v) {

@@ -171,6 +171,8 @@ Value piece_value(Phase phase, PieceType pt)
             + (phase == MG ?  30 :  40) * pi->steps[0][MODALITY_QUIET].size()
             + (phase == MG ? 185 : 185) * slider_fraction(pi->slider[0][MODALITY_CAPTURE]) / 100
             + (phase == MG ?  55 :  45) * slider_fraction(pi->slider[0][MODALITY_QUIET]) / 100
+            // Bent (multi-leg) pieces are roughly a step plus an outward rider
+            + 140 * (pi->bent[MODALITY_CAPTURE].size() + pi->bent[MODALITY_QUIET].size())
             // Hoppers are more useful with more pieces on the board
             + (phase == MG ? 100 :  80) * pi->hopper[0][MODALITY_CAPTURE].size()
             + (phase == MG ?  85 :  60) * pi->hopper[0][MODALITY_QUIET].size()

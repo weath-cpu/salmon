@@ -70,6 +70,7 @@ struct StateInfo {
   Bitboard   checkSquares[PIECE_TYPE_NB];
   Piece      capturedPiece;
   Square     captureSquare; // when != to_sq, e.g., en passant
+  Piece      movedPiece;    // piece that made the last move
   Piece      promotionPawn;
   Bitboard   nonSlidingRiders;
   Bitboard   flippedPieces;
@@ -289,6 +290,8 @@ public:
   bool gives_check(Move m) const;
   Piece moved_piece(Move m) const;
   Piece captured_piece() const;
+  bool has_capture(PieceSet types) const;
+  bool restricted_capture(Move m) const;
   const std::string piece_to_partner() const;
 
   // Piece specific

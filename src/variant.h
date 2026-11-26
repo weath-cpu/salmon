@@ -141,6 +141,15 @@ struct Variant {
   PieceSet extinctionPieceTypes = NO_PIECE_SET;
   int extinctionPieceCount = 0;
   int extinctionOpponentPieceCount = 0;
+  // Treat all extinctionPieceTypes as one combined set instead of one by one
+  bool extinctionCombinedTypes = false;
+  // Piece types that may only be captured by the king
+  PieceSet kingOnlyCaptureTypes = NO_PIECE_SET;
+  // Piece types that must capture whenever they can
+  PieceSet mustCapturePieceTypes = NO_PIECE_SET;
+  // Win by capturing one of winOnCaptureTypes with this piece type
+  PieceType winOnCaptureBy = NO_PIECE_TYPE;
+  PieceSet winOnCaptureTypes = NO_PIECE_SET;
   PieceType flagPiece[COLOR_NB] = {ALL_PIECES, ALL_PIECES};
   Bitboard flagRegion[COLOR_NB] = {};
   int flagPieceCount = 1;

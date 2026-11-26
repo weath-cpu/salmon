@@ -34,7 +34,7 @@ bool probe(Square wksq, Square wpsq, Square bksq, Color us);
 
 namespace Bitboards {
 
-void init_pieces();
+void init_pieces(int maxFile = FILE_H, int maxRank = RANK_8);
 void init();
 std::string pretty(Bitboard b);
 
@@ -115,6 +115,15 @@ extern RiderType AttackRiderTypes[PIECE_TYPE_NB];
 extern PieceSet PinUnsafeTypes;
 extern PieceSet SniperTypes;
 extern RiderType MoveRiderTypes[2][PIECE_TYPE_NB];
+
+// Bent (multi-leg) piece legs. Index 0 is the quiet modality, index 1 captures.
+// The largest supported definition, "F>Q", has 4 first directions x 3 continuations.
+constexpr int BENT_LEG_MAX = 12;
+extern BentLeg BentLegs[PIECE_TYPE_NB][2][BENT_LEG_MAX];
+extern int BentLegCount[PIECE_TYPE_NB][2];
+// Board limits used to stop bent moves at the edge of narrow boards
+extern int BentMaxFile;
+extern int BentMaxRank;
 
 #ifdef LARGEBOARDS
 int popcount(Bitboard b); // required for 128 bit pext
@@ -433,6 +442,13 @@ inline Bitboard rider_attacks_bb(RiderType R, Square s, Bitboard occupied) {
 }
 
 
+/// bent_attacks_bb() returns the destinations of a bent (multi-leg) piece:
+/// a mandatory empty single step, followed by a rider move that continues
+/// outwards. Directions are mirrored for black.
+/// Kept out of line so that ordinary variants do not pay for the walk.
+Bitboard bent_attacks_bb(Color c, PieceType pt, int modality, Square s, Bitboard occupied);
+
+
 /// attacks_bb(Square) returns the pseudo attacks of the give piece type
 /// assuming an empty board.
 
@@ -473,6 +489,9 @@ inline RiderType pop_rider(RiderType* r) {
 }
 
 inline Bitboard attacks_bb(Color c, PieceType pt, Square s, Bitboard occupied) {
+  // Bent pieces have path-dependent attacks that can not be stored in magics
+  if (BentLegCount[pt][1])
+      return bent_attacks_bb(c, pt, 1, s, occupied) & PseudoAttacks[c][pt][s];
   Bitboard b = LeaperAttacks[c][pt][s];
   RiderType r = AttackRiderTypes[pt];
   // Leaper attacks are a subset of the pseudo attacks
@@ -488,6 +507,8 @@ inline Bitboard attacks_bb(Color c, PieceType pt, Square s, Bitboard occupied) {
 
 template <bool Initial=false>
 inline Bitboard moves_bb(Color c, PieceType pt, Square s, Bitboard occupied) {
+  if (BentLegCount[pt][0])
+      return bent_attacks_bb(c, pt, 0, s, occupied) & PseudoMoves[Initial][c][pt][s];
   Bitboard b = LeaperMoves[Initial][c][pt][s];
   RiderType r = MoveRiderTypes[Initial][pt];
   // Leaper moves are a subset of the pseudo moves

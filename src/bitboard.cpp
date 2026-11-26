@@ -41,6 +41,47 @@ RiderType AttackRiderTypes[PIECE_TYPE_NB];
 PieceSet PinUnsafeTypes;
 PieceSet SniperTypes;
 RiderType MoveRiderTypes[2][PIECE_TYPE_NB];
+BentLeg BentLegs[PIECE_TYPE_NB][2][BENT_LEG_MAX];
+int BentLegCount[PIECE_TYPE_NB][2];
+int BentMaxFile = FILE_H;
+int BentMaxRank = RANK_8;
+
+namespace {
+
+  // A single step of a bent move, stopping at the edge of the grid and of the board
+  bool bent_step(Square from, int step, Square* to) {
+
+    const Square t = Square(from + step);
+    *to = t;
+    // The file/rank distances prevent wrapping around the edge of the square grid,
+    // and the board limits stop the move at the edge of narrow boards.
+    return   is_ok(t)
+          && distance<File>(from, t) <= 1 && distance<Rank>(from, t) <= 1
+          && int(file_of(t)) <= BentMaxFile && int(rank_of(t)) <= BentMaxRank;
+  }
+
+} // namespace
+
+Bitboard bent_attacks_bb(Color c, PieceType pt, int modality, Square s, Bitboard occupied) {
+
+  Bitboard b = 0;
+  for (int i = 0; i < BentLegCount[pt][modality]; ++i)
+  {
+      const BentLeg& leg = BentLegs[pt][modality][i];
+      const int d1 = c == WHITE ? leg.first : -leg.first;
+      const int d2 = c == WHITE ? leg.second : -leg.second;
+      Square via, t;
+      if (!bent_step(s, d1, &via) || (occupied & via))
+          continue;
+      for (t = via; bent_step(t, d2, &t); )
+      {
+          b |= square_bb(t);
+          if (occupied & t)
+              break;
+      }
+  }
+  return b;
+}
 
 Magic RookMagicsH[SQUARE_NB];
 Magic RookMagicsV[SQUARE_NB];
@@ -231,14 +272,26 @@ std::string Bitboards::pretty(Bitboard b) {
 
 /// Bitboards::init_pieces() initializes piece move/attack bitboards and rider types
 
-void Bitboards::init_pieces() {
+void Bitboards::init_pieces(int maxFile, int maxRank) {
 
   PinUnsafeTypes = NO_PIECE_SET;
   SniperTypes = NO_PIECE_SET;
+  BentMaxFile = maxFile;
+  BentMaxRank = maxRank;
 
   for (PieceType pt = PAWN; pt <= KING; ++pt)
   {
       const PieceInfo* pi = pieceMap.find(pt)->second;
+      const bool isBent = !pi->bent[MODALITY_QUIET].empty() || !pi->bent[MODALITY_CAPTURE].empty();
+
+      // Copy bent (multi-leg) move definitions into the lookup tables
+      for (MoveModality modality : {MODALITY_QUIET, MODALITY_CAPTURE})
+      {
+          assert((int)pi->bent[modality].size() <= BENT_LEG_MAX);
+          BentLegCount[pt][modality] = (int)pi->bent[modality].size();
+          for (int i = 0; i < BentLegCount[pt][modality]; ++i)
+              BentLegs[pt][modality][i] = pi->bent[modality][i];
+      }
 
       // Detect rider types
       for (auto modality : {MODALITY_QUIET, MODALITY_CAPTURE})
@@ -250,6 +303,8 @@ void Bitboards::init_pieces() {
                   continue;
               auto& riderTypes = modality == MODALITY_CAPTURE ? AttackRiderTypes[pt] : MoveRiderTypes[initial][pt];
               riderTypes = NO_RIDER;
+              if (isBent)
+                  riderTypes |= RIDER_BENT;
               for (auto const& [d, limit] : pi->steps[initial][modality])
               {
                   if (limit && LameDabbabaDirections.find(d) != LameDabbabaDirections.end())
@@ -302,6 +357,14 @@ void Bitboards::init_pieces() {
                           continue;
                       auto& pseudo = modality == MODALITY_CAPTURE ? PseudoAttacks[c][pt][s] : PseudoMoves[initial][c][pt][s];
                       auto& leaper = modality == MODALITY_CAPTURE ? LeaperAttacks[c][pt][s] : LeaperMoves[initial][c][pt][s];
+                      // Bent pieces have path-dependent moves, so they can not
+                      // be represented by magics and are computed on the fly
+                      if (isBent)
+                      {
+                          pseudo = bent_attacks_bb(c, pt, modality, s, 0);
+                          leaper = 0;
+                          continue;
+                      }
                       pseudo = 0;
                       leaper = 0;
                       for (auto const& [d, limit] : pi->steps[initial][modality])
@@ -321,7 +384,8 @@ void Bitboards::init_pieces() {
                   }
               }
               // Pieces with attacks that can be blocked
-              if (PseudoAttacks[c][pt][s] != LeaperAttacks[c][pt][s])
+              // Bent pieces are path-dependent and are handled as pin-unsafe
+              if (!isBent && PseudoAttacks[c][pt][s] != LeaperAttacks[c][pt][s])
                   SniperTypes |= pt;
           }
       }

@@ -37,6 +37,8 @@ struct PieceInfo {
   std::map<Direction, int> steps[2][MOVE_MODALITY_NB] = {};
   std::map<Direction, int> slider[2][MOVE_MODALITY_NB] = {};
   std::map<Direction, int> hopper[2][MOVE_MODALITY_NB] = {};
+  // Two-leg (bent) moves, e.g. "F>R"
+  std::vector<BentLeg> bent[MOVE_MODALITY_NB] = {};
 };
 
 struct PieceMap : public std::map<PieceType, const PieceInfo*> {
@@ -44,6 +46,9 @@ struct PieceMap : public std::map<PieceType, const PieceInfo*> {
   void add(PieceType pt, const PieceInfo* v);
   void clear_all();
 };
+
+// Tests whether a two-leg (bent) piece notation such as "F>R" is understood
+bool is_valid_bent_betza(const std::string& betza);
 
 extern PieceMap pieceMap;
 
