@@ -74,6 +74,8 @@ struct StateInfo {
   Piece      promotionPawn;
   Bitboard   nonSlidingRiders;
   Bitboard   flippedPieces;
+  // Squares cleared by a sweeping move, restored from unpromotedBycatch
+  Bitboard   sweptSquares;
   Bitboard   pseudoRoyalCandidates;
   Bitboard   pseudoRoyals;
   OptBool    legalCapture;
@@ -141,6 +143,7 @@ public:
   bool mandatory_piece_promotion() const;
   bool piece_demotion() const;
   bool blast_on_capture() const;
+  bool sweep_piece(PieceType pt) const;
   PieceSet blast_immune_types() const;
   PieceSet mutually_immune_types() const;
   EndgameEval endgame_eval() const;
@@ -278,6 +281,8 @@ public:
   Bitboard attackers_to(Square s, Bitboard occupied, Color c, Bitboard janggiCannons) const;
   Bitboard attacks_from(Color c, PieceType pt, Square s) const;
   Bitboard moves_from(Color c, PieceType pt, Square s) const;
+  Bitboard swept_squares(Move m) const;
+  Value sweep_value(Move m) const;
   Bitboard slider_blockers(Bitboard sliders, Square s, Bitboard& pinners, Color c) const;
 
   // Properties of moves
@@ -509,6 +514,11 @@ inline bool Position::piece_demotion() const {
 inline bool Position::blast_on_capture() const {
   assert(var != nullptr);
   return var->blastOnCapture;
+}
+
+inline bool Position::sweep_piece(PieceType pt) const {
+  assert(var != nullptr);
+  return var->sweepTypes & pt;
 }
 
 inline PieceSet Position::blast_immune_types() const {
@@ -1277,11 +1287,13 @@ inline Square Position::castling_rook_square(CastlingRights cr) const {
 }
 
 inline Bitboard Position::attacks_from(Color c, PieceType pt, Square s) const {
+  // Unblocked ("beam") pieces are only blocked by pieces of their own side
+  const Bitboard occupied = BeamTypes & pt ? pieces(c) : byTypeBB[ALL_PIECES];
   if (var->fastAttacks || var->fastAttacks2)
-      return attacks_bb(c, pt, s, byTypeBB[ALL_PIECES]) & board_bb();
+      return attacks_bb(c, pt, s, occupied) & board_bb();
 
   PieceType movePt = pt == KING ? king_type() : pt;
-  Bitboard b = attacks_bb(c, movePt, s, byTypeBB[ALL_PIECES]);
+  Bitboard b = attacks_bb(c, movePt, s, occupied);
   // Xiangqi soldier
   if (pt == SOLDIER && !(promoted_soldiers(c) & s))
       b &= file_bb(file_of(s));
@@ -1307,14 +1319,16 @@ inline Bitboard Position::attacks_from(Color c, PieceType pt, Square s) const {
 }
 
 inline Bitboard Position::moves_from(Color c, PieceType pt, Square s) const {
+  // Unblocked ("beam") pieces are only blocked by pieces of their own side
+  const Bitboard occupied = BeamTypes & pt ? pieces(c) : byTypeBB[ALL_PIECES];
   if (var->fastAttacks || var->fastAttacks2)
-      return moves_bb(c, pt, s, byTypeBB[ALL_PIECES]) & board_bb();
+      return moves_bb(c, pt, s, occupied) & board_bb();
 
   PieceType movePt = pt == KING ? king_type() : pt;
-  Bitboard b = moves_bb(c, movePt, s, byTypeBB[ALL_PIECES]);
+  Bitboard b = moves_bb(c, movePt, s, occupied);
   // Add initial moves
   if (double_step_region(c) & s)
-      b |= moves_bb<true>(c, movePt, s, byTypeBB[ALL_PIECES]);
+      b |= moves_bb<true>(c, movePt, s, occupied);
   // Xiangqi soldier
   if (pt == SOLDIER && !(promoted_soldiers(c) & s))
       b &= file_bb(file_of(s));
@@ -1447,6 +1461,17 @@ inline bool Position::capture(Move m) const {
   assert(is_ok(m));
   // Castling is encoded as "king captures rook"
   return (!empty(to_sq(m)) && type_of(m) != CASTLING && from_sq(m) != to_sq(m)) || type_of(m) == EN_PASSANT;
+}
+
+/// Position::swept_squares() returns the squares of the pieces a sweeping move
+/// removes on its way, excluding the destination square.
+
+inline Bitboard Position::swept_squares(Move m) const {
+
+  if (type_of(m) != NORMAL || !sweep_piece(type_of(moved_piece(m))))
+      return Bitboard(0);
+
+  return between_bb(from_sq(m), to_sq(m)) & ~square_bb(to_sq(m)) & pieces();
 }
 
 inline Square Position::capture_square(Square to) const {

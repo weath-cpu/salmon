@@ -421,6 +421,28 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
     parse_attribute("mutuallyImmuneTypes", v->mutuallyImmuneTypes, v->pieceToChar);
     parse_attribute("petrifyOnCaptureTypes", v->petrifyOnCaptureTypes, v->pieceToChar);
     parse_attribute("petrifyBlastPieces", v->petrifyBlastPieces);
+    // Move effects, one entry per slot: "<piece type>:<effect>", e.g. "t:sweep"
+    for (int i = 1; i <= CUSTOM_PIECES_NB; ++i)
+    {
+        const std::string key = "moveEffect" + std::to_string(i);
+        const auto& it_effect = config.find(key);
+        if (it_effect == config.end())
+            continue;
+        const std::string& value = it_effect->second;
+        const std::string::size_type sep = value.find(':');
+        const std::string effect = sep == std::string::npos ? "" : value.substr(sep + 1);
+        const size_t idx = sep == std::string::npos || value.empty() ? std::string::npos
+                          : v->pieceToChar.find(toupper(value[0]));
+        if (idx == std::string::npos || idx == ALL_PIECES)
+        {
+            if (DoCheck)
+                std::cerr << key << " - Invalid piece type: " << value << std::endl;
+        }
+        else if (effect == "sweep")
+            v->sweepTypes |= piece_set(PieceType(idx));
+        else if (DoCheck)
+            std::cerr << key << " - Invalid move effect: " << effect << std::endl;
+    }
     parse_attribute("doubleStep", v->doubleStep);
     parse_attribute("doubleStepRegionWhite", v->doubleStepRegion[WHITE]);
     parse_attribute("doubleStepRegionBlack", v->doubleStepRegion[BLACK]);
@@ -648,6 +670,26 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
                 if (v->pieceDrops)
                     errors.push_back("Bent (multi-leg) pieces do not support drops.");
             }
+        }
+    }
+
+    // Constraints of the sweep move effect
+    if (v->sweepTypes)
+    {
+        if ((v->pieceTypes & KING) && (v->sweepTypes & piece_set(v->kingType)))
+            errors.push_back("Kings and royal pieces can not use the sweep move effect.");
+        if (v->capturesToHand)
+            errors.push_back("capturesToHand is not supported with the sweep move effect.");
+        // The swept pieces are tracked in the blast bookkeeping
+        if (v->blastOnCapture || v->petrifyOnCaptureTypes)
+            errors.push_back("The sweep move effect can not be combined with blast or petrification.");
+        for (PieceSet ps = v->sweepTypes; ps;)
+        {
+            PieceType pt = pop_lsb(ps);
+            if (!is_custom(pt) || pt > CUSTOM_PIECES_END)
+                errors.push_back("The sweep move effect requires a custom piece.");
+            else if (v->customPiece[pt - CUSTOM_PIECES].find('>') != std::string::npos)
+                errors.push_back("The sweep move effect can not be used with bent (multi-leg) pieces.");
         }
     }
 

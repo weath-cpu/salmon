@@ -114,6 +114,8 @@ extern Bitboard BoardSizeBB[FILE_NB][RANK_NB];
 extern RiderType AttackRiderTypes[PIECE_TYPE_NB];
 extern PieceSet PinUnsafeTypes;
 extern PieceSet SniperTypes;
+// Pieces whose rays are only blocked by pieces of their own side ("~")
+extern PieceSet BeamTypes;
 extern RiderType MoveRiderTypes[2][PIECE_TYPE_NB];
 
 // Bent (multi-leg) piece legs. Index 0 is the quiet modality, index 1 captures.

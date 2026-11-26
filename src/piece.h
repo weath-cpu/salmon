@@ -34,6 +34,8 @@ enum MoveModality {MODALITY_QUIET, MODALITY_CAPTURE, MOVE_MODALITY_NB};
 struct PieceInfo {
   std::string name = "";
   std::string betza = "";
+  // Unblocked rider ("~" modifier): its rays are only blocked by own pieces
+  bool beam = false;
   std::map<Direction, int> steps[2][MOVE_MODALITY_NB] = {};
   std::map<Direction, int> slider[2][MOVE_MODALITY_NB] = {};
   std::map<Direction, int> hopper[2][MOVE_MODALITY_NB] = {};

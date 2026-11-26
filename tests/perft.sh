@@ -215,6 +215,18 @@ if [[ $1 == "all" || $1 == "variant" ]]; then
   expect perft.exp bowsman-narrow "fen 6k/7/7/7/7/7/7/2K1B2 w - - 0 1" 3 862 false variants.ini > /dev/null
 fi
 
+# user-defined variants loaded from variants.ini (sweeping pieces with unblocked rays)
+if [[ $1 == "all" || $1 == "variant" ]]; then
+  # tank = unblocked rook that removes the pieces it passes over
+  expect perft.exp tank startpos 3 4850 false variants.ini > /dev/null
+  # e1e4 removes the pawn on e3 as well as the rook on e4, so unmake has to
+  # restore both pieces; the black king on a8 is also on the tank's file
+  expect perft.exp tank "fen k7/8/8/8/4r3/3pp3/2P5/K3N3 w - - 0 1" 4 64963 false variants.ini > /dev/null
+  expect perft.exp tank "fen 7k/8/8/8/4r3/3pp3/2P5/K3N3 w - - 0 1" 4 57612 false variants.ini > /dev/null
+  # the swept piece is a promoted queen, so its promotion state must survive unmake
+  expect perft.exp tank "fen k7/8/8/8/4q~3/3pp3/2P5/K3N3 w - - 0 1" 4 137310 false variants.ini > /dev/null
+fi
+
 rm perft.exp
 
 echo "perft testing OK"

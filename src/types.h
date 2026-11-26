@@ -229,6 +229,8 @@ constexpr int SQUARE_BITS = 6;
 
 constexpr int MAX_MOVES = 8192;
 constexpr int MAX_PLY = 246;
+// Max number of pieces a sweeping move can remove at once
+constexpr int SWEEP_MAX = 12;
 
 /// A move needs 16 bits to be stored
 ///

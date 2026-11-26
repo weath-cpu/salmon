@@ -40,6 +40,7 @@ Bitboard BoardSizeBB[FILE_NB][RANK_NB];
 RiderType AttackRiderTypes[PIECE_TYPE_NB];
 PieceSet PinUnsafeTypes;
 PieceSet SniperTypes;
+PieceSet BeamTypes;
 RiderType MoveRiderTypes[2][PIECE_TYPE_NB];
 BentLeg BentLegs[PIECE_TYPE_NB][2][BENT_LEG_MAX];
 int BentLegCount[PIECE_TYPE_NB][2];
@@ -276,6 +277,7 @@ void Bitboards::init_pieces(int maxFile, int maxRank) {
 
   PinUnsafeTypes = NO_PIECE_SET;
   SniperTypes = NO_PIECE_SET;
+  BeamTypes = NO_PIECE_SET;
   BentMaxFile = maxFile;
   BentMaxRank = maxRank;
 
@@ -283,6 +285,14 @@ void Bitboards::init_pieces(int maxFile, int maxRank) {
   {
       const PieceInfo* pi = pieceMap.find(pt)->second;
       const bool isBent = !pi->bent[MODALITY_QUIET].empty() || !pi->bent[MODALITY_CAPTURE].empty();
+
+      // Unblocked pieces can not be blocked, so they hide pins from
+      // slider_blockers() and must always be tested with the full attack test.
+      if (pi->beam)
+      {
+          BeamTypes |= pt;
+          PinUnsafeTypes |= pt;
+      }
 
       // Copy bent (multi-leg) move definitions into the lookup tables
       for (MoveModality modality : {MODALITY_QUIET, MODALITY_CAPTURE})
@@ -385,7 +395,7 @@ void Bitboards::init_pieces(int maxFile, int maxRank) {
               }
               // Pieces with attacks that can be blocked
               // Bent pieces are path-dependent and are handled as pin-unsafe
-              if (!isBent && PseudoAttacks[c][pt][s] != LeaperAttacks[c][pt][s])
+              if (!isBent && !pi->beam && PseudoAttacks[c][pt][s] != LeaperAttacks[c][pt][s])
                   SniperTypes |= pt;
           }
       }

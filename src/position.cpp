@@ -594,13 +594,15 @@ void Position::set_check_info(StateInfo* si) const {
   {
       PieceType pt = pop_lsb(ps);
       PieceType movePt = pt == KING ? king_type() : pt;
+      // Unblocked pieces only see the enemy king through their own pieces
+      const Bitboard checkOccupied = BeamTypes & movePt ? pieces(sideToMove) : pieces();
       // Pieces can not give check to a king outside of their mobility region
-      si->checkSquares[pt] = ksq != SQ_NONE && (board_bb(sideToMove, pt) & ksq) ? attacks_bb(~sideToMove, movePt, ksq, pieces()) : Bitboard(0);
+      si->checkSquares[pt] = ksq != SQ_NONE && (board_bb(sideToMove, pt) & ksq) ? attacks_bb(~sideToMove, movePt, ksq, checkOccupied) : Bitboard(0);
       // Unpromoted soldiers only attack forwards, i.e., can not give check from the rank of the king
       if (pt == SOLDIER && ksq != SQ_NONE && relative_rank(sideToMove, ksq, max_rank()) < var->soldierPromotionRank)
           si->checkSquares[pt] &= PseudoAttacks[~sideToMove][SHOGI_PAWN][ksq];
       // Collect special piece types that require slower check and evasion detection
-      if (AttackRiderTypes[movePt] & NON_SLIDING_RIDERS)
+      if ((AttackRiderTypes[movePt] & NON_SLIDING_RIDERS) || (BeamTypes & movePt))
           si->nonSlidingRiders |= pieces(pt);
   }
   si->shak = si->checkersBB & (byTypeBB[KNIGHT] | byTypeBB[ROOK] | byTypeBB[BERS]);
@@ -1072,7 +1074,11 @@ Bitboard Position::attackers_to(Square s, Bitboard occupied, Color c, Bitboard j
           else if (pt == JANGGI_CANNON)
               b |= attacks_bb(~c, move_pt, s, occupied) & attacks_bb(~c, move_pt, s, occupied & ~janggiCannons) & pieces(c, JANGGI_CANNON);
           else
-              b |= attacks_bb(~c, move_pt, s, occupied) & pieces(c, pt);
+          {
+              // Unblocked pieces are only blocked by pieces of their own side
+              const Bitboard attackOccupied = BeamTypes & move_pt ? occupied & pieces(c) : occupied;
+              b |= attacks_bb(~c, move_pt, s, attackOccupied) & pieces(c, pt);
+          }
       }
   }
 
@@ -1418,6 +1424,12 @@ bool Position::legal(Move m) const {
       return !attackers_to(to, pieces() ^ to_sq(m), ~us);
   }
 
+  // A sweeping piece can not move over a king, since kings are never swept
+  if (   type_of(m) == NORMAL
+      && sweep_piece(type_of(moved_piece(m)))
+      && (between_bb(from, to) & ~square_bb(to) & pieces(KING)))
+      return false;
+
   Bitboard occupied = (type_of(m) != DROP ? pieces() ^ from : pieces()) | to;
   // The wall placed with the move can block attacks on the king
   if (walling() && (!var->wallOrMove || from == to))
@@ -1544,6 +1556,12 @@ bool Position::pseudo_legal(const Move m) const {
 
   // The destination square cannot be occupied by a friendly piece
   if (pieces(us) & to)
+      return false;
+
+  // A sweeping piece can not move over a king, since kings are never swept
+  if (   type_of(m) == NORMAL
+      && sweep_piece(type_of(pc))
+      && (between_bb(from, to) & ~square_bb(to) & pieces(KING)))
       return false;
 
   // Handle the special case of a pawn move
@@ -1741,6 +1759,7 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
   newSt.previous = st;
   st = &newSt;
   st->move = m;
+  st->sweptSquares = 0;
 
   // Increment ply counters. In particular, rule50 will be reset to zero later on
   // in case of a capture or a pawn move.
@@ -2272,6 +2291,62 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
       }
   }
 
+  // Remove the pieces swept by a sweeping piece
+  if (type_of(m) == NORMAL && sweep_piece(type_of(pc)))
+  {
+      Bitboard swept = between_bb(from, to) & ~square_bb(to) & pieces();
+      assert(popcount(swept) <= SWEEP_MAX);
+      while (swept)
+      {
+          Square ssq = pop_lsb(swept);
+          Piece spc = piece_on(ssq);
+          Color sc = color_of(spc);
+
+          if (type_of(spc) != PAWN)
+              st->nonPawnMaterial[sc] -= PieceValue[MG][spc];
+
+          if (Eval::useNNUE && dp.dirty_num < 12)
+          {
+              dp.piece[dp.dirty_num] = spc;
+              dp.handPiece[dp.dirty_num] = NO_PIECE;
+              dp.from[dp.dirty_num] = ssq;
+              dp.to[dp.dirty_num] = SQ_NONE;
+              dp.dirty_num++;
+          }
+
+          // Store the swept pieces in the same format as the blast pieces,
+          // so that undo_move() can restore promoted pieces correctly
+          bool sweptPromoted = is_promoted(ssq);
+          Piece unpromotedSwept = unpromoted_piece_on(ssq);
+          st->unpromotedBycatch[ssq] = unpromotedSwept ? unpromotedSwept : spc;
+          if (unpromotedSwept)
+              st->demotedBycatch |= ssq;
+          else if (sweptPromoted)
+              st->promotedBycatch |= ssq;
+          st->sweptSquares |= ssq;
+
+          remove_piece(ssq);
+          board[ssq] = NO_PIECE;
+
+          // Update hash keys and material
+          k ^= Zobrist::psq[spc][ssq];
+          st->materialKey ^= Zobrist::psq[spc][pieceCount[spc]];
+          if (type_of(spc) == PAWN)
+              st->pawnKey ^= Zobrist::psq[spc][ssq];
+
+          if (st->castlingRights && castlingRightsMask[ssq])
+          {
+              k ^= Zobrist::castling[st->castlingRights];
+              st->castlingRights &= ~castlingRightsMask[ssq];
+              k ^= Zobrist::castling[st->castlingRights];
+          }
+      }
+
+      // A sweep is irreversible
+      if (st->sweptSquares)
+          st->rule50 = 0;
+  }
+
   // Add gated wall square
   // if wallOrMove, only actually place the wall if they gave up their move
   if (walling() && (!var->wallOrMove || (from==to)))
@@ -2384,6 +2459,17 @@ void Position::undo_move(Move m) {
       }
       // Reset piece since it exploded itself
       pc = piece_on(to);
+  }
+
+  // Add the swept pieces back
+  for (Bitboard swept = st->sweptSquares; swept; )
+  {
+      Square ssq = pop_lsb(swept);
+      Piece unpromotedSpc = st->unpromotedBycatch[ssq];
+      Piece spc = st->demotedBycatch & ssq ? make_piece(color_of(unpromotedSpc), promoted_piece_type(type_of(unpromotedSpc)))
+                                           : unpromotedSpc;
+      bool isPromoted = (st->promotedBycatch | st->demotedBycatch) & ssq;
+      put_piece(spc, ssq, isPromoted, st->demotedBycatch & ssq ? unpromotedSpc : NO_PIECE);
   }
 
   // Remove gated piece
@@ -2600,6 +2686,20 @@ Key Position::key_after(Move m) const {
 }
 
 
+/// Position::sweep_value() returns the value of the material a sweeping move
+/// removes on its way. Unlike ordinary captures this is not part of an
+/// exchange, i.e., the opponent can never recapture the swept pieces.
+
+Value Position::sweep_value(Move m) const {
+
+  Value result = VALUE_ZERO;
+  for (Bitboard b = swept_squares(m); b; )
+      result += CapturePieceValue[MG][piece_on(pop_lsb(b))];
+
+  return result;
+}
+
+
 Value Position::blast_see(Move m) const {
   assert(is_ok(m));
 
@@ -2709,7 +2809,11 @@ bool Position::see_ge(Move m, Value threshold) const {
       || count<CLOBBER_PIECE>() == count<ALL_PIECES>())
       return VALUE_ZERO >= threshold;
 
-  int swap = PieceValue[MG][piece_on(to)] - threshold;
+  // The pieces a sweeping move removes are gained before the exchange on 'to'
+  const Bitboard swept = swept_squares(m);
+  const int sweptValue = int(sweep_value(m));
+
+  int swap = PieceValue[MG][piece_on(to)] + sweptValue - threshold;
   if (swap < 0)
       return false;
 
@@ -2721,9 +2825,10 @@ bool Position::see_ge(Move m, Value threshold) const {
   if (var->petrifyOnCaptureTypes & type_of(moved_piece(m)) && capture(m))
       return false;
 
-  Bitboard occupied = (type_of(m) != DROP ? pieces() ^ from : pieces()) ^ to;
+  Bitboard occupied = ((type_of(m) != DROP ? pieces() ^ from : pieces()) ^ to) & ~swept;
   Color stm = color_of(moved_piece(m));
-  Bitboard attackers = attackers_to(to, occupied);
+  // Swept pieces are gone before the exchange and can not recapture
+  Bitboard attackers = attackers_to(to, occupied) & ~swept;
   Bitboard stmAttackers, bb;
   int res = 1;
 

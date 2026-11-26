@@ -173,6 +173,9 @@ namespace {
               if (c == 'g')
                   distance = 1;
           }
+          // Beam rider: the rays are only blocked by own pieces
+          else if (c == '~')
+              p->beam = true;
           // Lame leaper
           else if (c == 'n')
               lame = true;
@@ -328,7 +331,13 @@ void PieceMap::init(const Variant* v) {
   add(KING, from_betza("K", "king"));
   // Add custom pieces
   for (PieceType pt = CUSTOM_PIECES; pt <= CUSTOM_PIECES_END; ++pt)
-      add(pt, from_betza(v != nullptr ? v->customPiece[pt - CUSTOM_PIECES] : "", ""));
+  {
+      PieceInfo* p = from_betza(v != nullptr ? v->customPiece[pt - CUSTOM_PIECES] : "", "");
+      // Sweeping pieces need unblocked rays to reach past what they destroy
+      if (v != nullptr && (v->sweepTypes & piece_set(pt)))
+          p->beam = true;
+      add(pt, p);
+  }
 }
 
 void PieceMap::add(PieceType pt, const PieceInfo* p) {
