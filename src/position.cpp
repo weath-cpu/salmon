@@ -1430,7 +1430,10 @@ bool Position::legal(Move m) const {
       && (between_bb(from, to) & ~square_bb(to) & pieces(KING)))
       return false;
 
-  Bitboard occupied = (type_of(m) != DROP ? pieces() ^ from : pieces()) | to;
+  // The pieces a move effect removes are gone after the move, so they neither
+  // block nor attack anymore
+  const Bitboard effectSwept = swept_squares(m);
+  Bitboard occupied = ((type_of(m) != DROP ? pieces() ^ from : pieces()) | to) & ~effectSwept;
   // The wall placed with the move can block attacks on the king
   if (walling() && (!var->wallOrMove || from == to))
       occupied |= gating_square(m);
@@ -1474,8 +1477,10 @@ bool Position::legal(Move m) const {
       janggiCannons ^= to;
 
   // A non-king move is legal if the king is not under attack after the move.
-  // Pieces flipped by the move no longer attack for the opponent.
-  return !(attackers_to(square<KING>(us), occupied, ~us, janggiCannons) & ~SquareBB[to] & ~flipped_squares(m));
+  // Pieces a move effect removes or flips no longer attack for the opponent;
+  // they have to be masked explicitly, since leapers ignore the occupancy.
+  return !(   attackers_to(square<KING>(us), occupied, ~us, janggiCannons)
+            & ~SquareBB[to] & ~effectSwept & ~flipped_squares(m));
 }
 
 
@@ -1595,6 +1600,12 @@ bool Position::pseudo_legal(const Move m) const {
   // kind of moves are filtered out here.
   if (checkers() && !(checkers() & non_sliding_riders()))
   {
+      // A move effect can resolve a check by acting on the checking piece instead
+      // of blocking or capturing it, so the evasion shape does not apply and only
+      // the full king safety test decides
+      if (type_of(pc) != KING && effect_piece(type_of(pc)) && (effect_squares(m) & checkers()))
+          return legal(m);
+
       if (type_of(pc) != KING)
       {
           // Double check? In this case a king move is required

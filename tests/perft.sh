@@ -224,7 +224,7 @@ if [[ $1 == "all" || $1 == "variant" ]]; then
   expect perft.exp tank "fen k7/8/8/8/4r3/3pp3/2P5/K3N3 w - - 0 1" 4 64963 false variants.ini > /dev/null
   expect perft.exp tank "fen 7k/8/8/8/4r3/3pp3/2P5/K3N3 w - - 0 1" 4 57612 false variants.ini > /dev/null
   # the swept piece is a promoted queen, so its promotion state must survive unmake
-  expect perft.exp tank "fen k7/8/8/8/4q~3/3pp3/2P5/K3N3 w - - 0 1" 4 137310 false variants.ini > /dev/null
+  expect perft.exp tank "fen k7/8/8/8/4q~3/3pp3/2P5/K3N3 w - - 0 1" 4 137371 false variants.ini > /dev/null
 fi
 
 # user-defined variants loaded from variants.ini (transforming move effects)
@@ -239,6 +239,18 @@ if [[ $1 == "all" || $1 == "variant" ]]; then
   expect perft.exp converter "fen k7/8/8/8/8/8/3p4/K3C3 w - - 0 1" 4 14240 false variants.ini > /dev/null
   # e1e4 passes the black pawn on e3, which becomes a black queen
   expect perft.exp converter "fen k7/8/8/8/8/4p3/8/K3C3 w - - 0 1" 4 31711 false variants.ini > /dev/null
+fi
+
+# resolving a check by a move effect instead of blocking or capturing the checker
+if [[ $1 == "all" || $1 == "variant" ]]; then
+  # b8b1 sweeps the checking pawn on b2 and lands behind it, which is neither a
+  # blocking square nor the checking square, so it is only found via the effect
+  expect perft.exp tank "fen kN6/8/8/8/8/8/1p6/K7 w - - 0 1" 4 365 false variants.ini > /dev/null
+  # sweeping one of two checkers is not an evasion, so b8b1 must not be generated
+  # (the bishop on c3 keeps checking a1 after the pawn on b2 is swept)
+  expect perft.exp tank "fen kN6/8/8/8/8/2b5/1p6/K7 w - - 0 1" 4 1088 false variants.ini > /dev/null
+  # d5a2 flips the checking knight on b3 into a knight of the moving side
+  expect perft.exp flipper "fen k7/8/8/3A4/8/1n6/8/K7 w - - 0 1" 4 1243 false variants.ini > /dev/null
 fi
 
 rm perft.exp

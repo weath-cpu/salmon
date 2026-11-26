@@ -381,6 +381,11 @@ namespace {
 
     constexpr bool Checks = Type == QUIET_CHECKS; // Reduce template instantiations
     const Square ksq = pos.count<KING>(Us) ? pos.square<KING>(Us) : SQ_NONE;
+    // Pieces with a move effect can also resolve a check by removing or
+    // converting the checking piece on the way instead of blocking or
+    // capturing it, so they are generated against the full board below and
+    // filtered by legal()
+    const PieceSet effectPieces = Type == EVASIONS ? pos.effect_types() : NO_PIECE_SET;
     Bitboard target;
 
     // Skip generating non-king moves when in double check
@@ -406,7 +411,12 @@ namespace {
 
         moveList = generate_pawn_moves<Us, Type>(pos, moveList, target);
         for (PieceSet ps = pos.piece_types() & ~(piece_set(PAWN) | KING); ps;)
-            moveList = generate_moves<Us, Type>(pos, moveList, pop_lsb(ps), target);
+        {
+            PieceType pt = pop_lsb(ps);
+            if (effectPieces & piece_set(pt))
+                continue;
+            moveList = generate_moves<Us, Type>(pos, moveList, pt, target);
+        }
         // generate drops
         if (pos.piece_drops() && Type != CAPTURES && (pos.can_drop(Us, ALL_PIECES) || pos.two_boards()))
             for (PieceSet ps = pos.piece_types(); ps;)
@@ -470,6 +480,15 @@ namespace {
             for (CastlingRights cr : { Us & KING_SIDE, Us & QUEEN_SIDE } )
                 if (!pos.castling_impeded(cr) && pos.can_castle(cr))
                     moveList = make_move_and_gating<CASTLING>(pos, moveList, Us,ksq, pos.castling_rook_square(cr));
+    }
+
+    // Effect pieces are not restricted to the evasion targets, since their effect
+    // can resolve the check without landing on the checking piece
+    if (effectPieces)
+    {
+        const Bitboard effectTarget = ~pos.pieces(Us) & pos.board_bb();
+        for (PieceSet ps = effectPieces; ps;)
+            moveList = generate_moves<Us, EVASIONS>(pos, moveList, pop_lsb(ps), effectTarget);
     }
 
     return moveList;

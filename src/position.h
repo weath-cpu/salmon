@@ -146,6 +146,7 @@ public:
   bool mandatory_piece_promotion() const;
   bool piece_demotion() const;
   bool blast_on_capture() const;
+  PieceSet effect_types() const;
   bool effect_piece(PieceType pt) const;
   bool sweep_piece(PieceType pt) const;
   bool flip_piece(PieceType pt) const;
@@ -290,6 +291,7 @@ public:
   Bitboard moves_from(Color c, PieceType pt, Square s) const;
   Bitboard swept_squares(Move m) const;
   Bitboard transformed_squares(Move m) const;
+  Bitboard effect_squares(Move m) const;
   Bitboard flipped_squares(Move m) const;
   Value effect_value(Move m) const;
   Bitboard slider_blockers(Bitboard sliders, Square s, Bitboard& pinners, Color c) const;
@@ -523,6 +525,11 @@ inline bool Position::piece_demotion() const {
 inline bool Position::blast_on_capture() const {
   assert(var != nullptr);
   return var->blastOnCapture;
+}
+
+inline PieceSet Position::effect_types() const {
+  assert(var != nullptr);
+  return var->effectTypes;
 }
 
 inline bool Position::effect_piece(PieceType pt) const {
@@ -1515,6 +1522,15 @@ inline Bitboard Position::transformed_squares(Move m) const {
 
   return between_bb(from_sq(m), to_sq(m)) & ~square_bb(to_sq(m))
        & pieces(~color_of(moved_piece(m))) & ~pieces(KING) & ~pieces(var->kingType);
+}
+
+
+/// Position::effect_squares() returns the squares of the opponent pieces that a
+/// move effect removes or replaces on the way to the destination square.
+
+inline Bitboard Position::effect_squares(Move m) const {
+
+  return swept_squares(m) | transformed_squares(m);
 }
 
 
