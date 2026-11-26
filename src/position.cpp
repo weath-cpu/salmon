@@ -1335,10 +1335,15 @@ bool Position::legal(Move m) const {
           return false;
       // Petrifiable pseudo-royals can't capture
       Bitboard attackerCandidatesTheirs = occupied & ~square_bb(kto);
-      // Pieces flipped by a move effect attack for the moving side
-      attackerCandidatesTheirs &= ~flipped_squares(m);
+      // Pieces transformed by a move effect no longer attack with their old type
+      attackerCandidatesTheirs &= ~transformed_squares(m);
       for (PieceSet ps = var->petrifyOnCaptureTypes & extinction_piece_types(); ps;)
           attackerCandidatesTheirs &= ~pieces(~us, pop_lsb(ps));
+      // A morphed piece stays on its square but attacks with its new type
+      Bitboard morphedAttacks = Bitboard(0);
+      if (morph_piece(type_of(moved_piece(m))))
+          for (Bitboard b = transformed_squares(m); b; )
+              morphedAttacks |= attacks_bb(~us, morph_target(type_of(moved_piece(m))), pop_lsb(b), occupied);
       // Check for legality unless we capture a pseudo-royal piece
       if (!(pseudoRoyalsTheirs & ~occupied))
           while (pseudoRoyals)
@@ -1346,7 +1351,8 @@ bool Position::legal(Move m) const {
               Square sr = pop_lsb(pseudoRoyals);
               // Touching pseudo-royal pieces are immune
               if (  !(blast_on_capture() && (pseudoRoyalsTheirs & attacks_bb<KING>(sr)))
-                  && (attackers_to(sr, occupied, ~us) & attackerCandidatesTheirs))
+                  && (   (attackers_to(sr, occupied, ~us) & attackerCandidatesTheirs)
+                      || (morphedAttacks & sr)))
                   return false;
           }
       // Look for duple check
@@ -1363,7 +1369,8 @@ bool Position::legal(Move m) const {
               Square sr = pop_lsb(pseudoRoyalCandidates);
               // Touching pseudo-royal pieces are immune
               if (!(  !(blast_on_capture() && (pseudoRoyalsTheirs & attacks_bb<KING>(sr)))
-                    && (attackers_to(sr, occupied, ~us) & attackerCandidatesTheirs)))
+                    && (   (attackers_to(sr, occupied, ~us) & attackerCandidatesTheirs)
+                        || (morphedAttacks & sr))))
                   allCheck = false;
           }
           if (allCheck)
@@ -1481,10 +1488,21 @@ bool Position::legal(Move m) const {
       janggiCannons ^= to;
 
   // A non-king move is legal if the king is not under attack after the move.
-  // Pieces a move effect removes or flips no longer attack for the opponent;
-  // they have to be masked explicitly, since leapers ignore the occupancy.
-  return !(   attackers_to(square<KING>(us), occupied, ~us, janggiCannons)
-            & ~SquareBB[to] & ~effectSwept & ~flipped_squares(m));
+  // Pieces a move effect removes or transforms no longer attack for the
+  // opponent with their old type; they have to be masked explicitly, since
+  // leapers ignore the occupancy.
+  Bitboard attackers = attackers_to(square<KING>(us), occupied, ~us, janggiCannons)
+                     & ~SquareBB[to] & ~effect_squares(m);
+  // A morphed piece stays on its square and can attack with its new type
+  if (morph_piece(type_of(moved_piece(m))))
+      for (Bitboard b = transformed_squares(m); b; )
+      {
+          Square s = pop_lsb(b);
+          if (attacks_bb(~us, morph_target(type_of(moved_piece(m))), s, occupied) & square<KING>(us))
+              return false;
+      }
+
+  return !attackers;
 }
 
 

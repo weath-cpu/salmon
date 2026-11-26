@@ -236,9 +236,15 @@ if [[ $1 == "all" || $1 == "variant" ]]; then
   expect perft.exp flipper "fen k7/8/8/8/8/8/3p4/K3A3 w - - 0 1" 4 5460 false variants.ini > /dev/null
   # converter = rook-like piece that turns the pieces it passes into queens
   expect perft.exp converter startpos 3 8622 false variants.ini > /dev/null
-  expect perft.exp converter "fen k7/8/8/8/8/8/3p4/K3C3 w - - 0 1" 4 14240 false variants.ini > /dev/null
+  # a morph can create a check against the moving side, which is illegal
+  expect perft.exp converter "fen k7/8/8/8/8/8/3p4/K3C3 w - - 0 1" 4 13928 false variants.ini > /dev/null
   # e1e4 passes the black pawn on e3, which becomes a black queen
-  expect perft.exp converter "fen k7/8/8/8/8/4p3/8/K3C3 w - - 0 1" 4 31711 false variants.ini > /dev/null
+  expect perft.exp converter "fen k7/8/8/8/8/4p3/8/K3C3 w - - 0 1" 4 31484 false variants.ini > /dev/null
+  # d3f3/d3g3/d3h3 turn the pawn on e3 into a black queen, which would check e1
+  expect perft.exp converter "fen 7k/8/8/8/8/3Cp3/8/4K3 w - - 0 1" 4 4570 false variants.ini > /dev/null
+  # d3g3/d3h3 turn the checking knight on f3 into a queen, which does not attack
+  # e1 anymore, so the morph resolves the check
+  expect perft.exp converter "fen 7k/8/8/8/8/3C1n2/8/4K3 w - - 0 1" 4 13936 false variants.ini > /dev/null
 fi
 
 # resolving a check by a move effect instead of blocking or capturing the checker
@@ -257,6 +263,16 @@ if [[ $1 == "all" || $1 == "variant" ]]; then
   # double check: a5c3 flips only the bishop on b4, while the bishop on h4 keeps
   # checking e1, so the flip has to be rejected and only the three king moves remain
   expect perft.exp flipper "fen 7k/8/8/A7/1b5b/8/8/4K3 w - - 0 1" 4 9613 false variants.ini > /dev/null
+fi
+
+# move effects and the extinction pseudo-royal rule
+if [[ $1 == "all" || $1 == "variant" ]]; then
+  # a4d4/a4e4/a4f4/a4g4/a4h4 sweep the rook on c4, which can no longer attack
+  # the pseudo-royal queen on c1 after the move
+  expect perft.exp extinction-effects "fen K6k/8/8/8/T1r5/8/8/2Q5 w - - 0 1" 4 56047 false variants.ini > /dev/null
+  # f1b5/f1a6 flip the bishop on c4, so it attacks for the moving side and no
+  # longer attacks the pseudo-royal queen on e6
+  expect perft.exp extinction-effects "fen 1k6/8/4Q3/8/2b5/8/8/5A1K w - - 0 1" 4 50336 false variants.ini > /dev/null
 fi
 
 rm perft.exp
