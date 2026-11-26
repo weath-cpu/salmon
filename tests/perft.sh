@@ -251,6 +251,12 @@ if [[ $1 == "all" || $1 == "variant" ]]; then
   expect perft.exp tank "fen kN6/8/8/8/8/2b5/1p6/K7 w - - 0 1" 4 1088 false variants.ini > /dev/null
   # d5a2 flips the checking knight on b3 into a knight of the moving side
   expect perft.exp flipper "fen k7/8/8/3A4/8/1n6/8/K7 w - - 0 1" 4 1243 false variants.ini > /dev/null
+  # double check: a4e4 sweeps the bishop on b4 and captures the tank on e4, and
+  # a4f4/a4g4/a4h4 sweep both checkers, so a single move removes both checks
+  expect perft.exp tank "fen 7k/8/8/8/Nb2n3/8/8/4K3 w - - 0 1" 4 22492 false variants.ini > /dev/null
+  # double check: a5c3 flips only the bishop on b4, while the bishop on h4 keeps
+  # checking e1, so the flip has to be rejected and only the three king moves remain
+  expect perft.exp flipper "fen 7k/8/8/A7/1b5b/8/8/4K3 w - - 0 1" 4 9613 false variants.ini > /dev/null
 fi
 
 rm perft.exp

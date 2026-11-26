@@ -1277,6 +1277,8 @@ bool Position::legal(Move m) const {
   {
       Square kto = to;
       Bitboard occupied = (type_of(m) != DROP ? pieces() ^ from : pieces());
+      // The pieces a move effect removes are gone after the move
+      occupied &= ~swept_squares(m);
       if (walling_rule() == DUCK)
           occupied ^= st->wallSquares;
       if (walling() || is_gating(m))
@@ -1333,6 +1335,8 @@ bool Position::legal(Move m) const {
           return false;
       // Petrifiable pseudo-royals can't capture
       Bitboard attackerCandidatesTheirs = occupied & ~square_bb(kto);
+      // Pieces flipped by a move effect attack for the moving side
+      attackerCandidatesTheirs &= ~flipped_squares(m);
       for (PieceSet ps = var->petrifyOnCaptureTypes & extinction_piece_types(); ps;)
           attackerCandidatesTheirs &= ~pieces(~us, pop_lsb(ps));
       // Check for legality unless we capture a pseudo-royal piece
@@ -1642,7 +1646,9 @@ bool Position::gives_check(Move m) const {
   if (!count<KING>(~sideToMove))
       return false;
 
-  Bitboard occupied = (type_of(m) != DROP ? pieces() ^ from : pieces()) | to;
+  // The pieces a move effect removes do not block or attack anymore, so that
+  // they can not hide a discovered check
+  Bitboard occupied = ((type_of(m) != DROP ? pieces() ^ from : pieces()) | to) & ~swept_squares(m);
   Bitboard janggiCannons = pieces(JANGGI_CANNON);
   if (type_of(moved_piece(m)) == JANGGI_CANNON)
       janggiCannons = (type_of(m) == DROP ? janggiCannons : janggiCannons ^ from) | to;
