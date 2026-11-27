@@ -1646,6 +1646,11 @@ bool Position::pseudo_legal(const Move m) const {
           return false;
   }
 
+  // A morph changes the piece type in place, which can expose the own king or
+  // rescue it from a check in ways the evasion shape does not cover
+  if (morph_piece(type_of(pc)))
+      return legal(m);
+
   return true;
 }
 

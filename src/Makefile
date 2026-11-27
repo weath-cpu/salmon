@@ -846,7 +846,7 @@ net:
 
 # clean binaries and objects
 objclean:
-	@rm -f $(EXE) *.o ./syzygy/*.o ./nnue/*.o ./nnue/features/*.o
+	@rm -f $(EXE) pseudo_legal_test *.o ./syzygy/*.o ./nnue/*.o ./nnue/features/*.o
 
 # clean auxiliary profiling files
 profileclean:
@@ -865,6 +865,14 @@ default:
 ### ==========================================================================
 
 all: $(EXE) .depend
+
+# Test of the legality contract of pseudo legal moves, built from the objects
+# of the engine so that it uses the same configuration
+pseudo_legal_test: $(filter-out main.o,$(OBJS)) pseudo_legal_test.o
+	+$(CXX) -o $@ $(filter-out main.o,$(OBJS)) pseudo_legal_test.o $(LDFLAGS)
+
+pseudo_legal_test.o: ../tests/pseudo_legal.cpp
+	$(CXX) $(CXXFLAGS) -I. -c -o $@ $<
 
 config-sanity: $(load_net)
 	@echo ""
