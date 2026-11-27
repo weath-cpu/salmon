@@ -19,6 +19,7 @@
 #include <fstream>
 #include <iostream>
 #include <istream>
+#include <map>
 #include <vector>
 
 #include "position.h"
@@ -91,6 +92,49 @@ const vector<string> Defaults = {
   "setoption name UCI_Chess960 value false"
 };
 
+/// Variants with user defined move effects get their own positions, so that
+/// search changes in them show up in the bench. The positions are taken from
+/// tests/perft.sh and tests/effect_captures.cpp.
+const map<string, vector<string>> VariantDefaults = {
+  { "tank", {
+      // the tank on a4 sweeps the rook on e4 on its way, so it wins material
+      // like a capture
+      "7k/8/8/8/N3r3/8/8/K7 w - - 0 1",
+      // sweeping the pawn on e4 opens the line of the rook on e8, so a4f4,
+      // a4g4, and a4h4 are illegal
+      "4r2k/8/8/8/N3p3/8/8/4K3 w - - 0 1",
+      // a4e4 captures while a4f4/a4g4/a4h4 sweep one of two checkers each
+      "7k/8/8/8/Nb2n3/8/8/4K3 w - - 0 1",
+  } },
+  { "flipper", {
+      // the flipper on c1 flips the rook on f4 into a white rook
+      "7k/8/8/8/5r2/8/8/K1A5 w - - 0 1",
+      // d4g7/d4h8 flip the knight on f6 into a knight that checks e8
+      "4k3/8/5n2/8/3A4/8/8/K7 w - - 0 1",
+      // a5c3 flips one checker, but the other bishop keeps checking e1
+      "7k/8/8/A7/1b5b/8/8/4K3 w - - 0 1",
+  } },
+  { "converter", {
+      // d3f3/d3g3/d3h3 turn the pawn on e3 into a black queen, which would
+      // check the own king
+      "7k/8/8/8/8/3Cp3/8/4K3 w - - 0 1",
+      // d3g3/d3h3 turn the checking knight on f3 into a queen, which resolves
+      // the check
+      "7k/8/8/8/8/3C1n2/8/4K3 w - - 0 1",
+      // e1e4 turns the pawn on e3 into a black queen
+      "k7/8/8/8/8/4p3/8/K3C3 w - - 0 1",
+  } },
+  { "extinction-effects", {
+      // a4d4/a4e4/a4f4/a4g4/a4h4 sweep the rook on c4, which can no longer
+      // attack the pseudo-royal queen on c1 after the move
+      "K6k/8/8/8/T1r5/8/8/2Q5 w - - 0 1",
+      // f1b5/f1a6 flip the bishop on c4, so it attacks for the moving side and
+      // no longer attacks the pseudo-royal queen on e6
+      "1k6/8/4Q3/8/2b5/8/8/5A1K w - - 0 1",
+      "rnbqkatr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKATR w - - 0 1",
+  } },
+};
+
 } // namespace
 
 namespace Stockfish {
@@ -102,7 +146,8 @@ namespace Stockfish {
 /// depth, perft, nodes and movetime (in millisecs), and evaluation type
 /// mixed (default), classical, NNUE.
 ///
-/// bench -> search default positions up to depth 13
+/// bench -> search default positions up to depth 13 (variant specific ones for
+/// the variants in VariantDefaults, the start position for other variants)
 /// bench 64 1 15 -> search default positions up to depth 15 (TT = 64MB)
 /// bench 64 4 5000 current movetime -> search current position with 4 threads for 5 sec
 /// bench 64 1 100000 default nodes -> search default positions for 100K nodes each
@@ -140,7 +185,12 @@ vector<string> setup_bench(const Position& current, istream& is) {
   if (fenFile == "default")
   {
       if (varname != "chess")
-          fens.push_back(variant->startFen);
+      {
+          if (VariantDefaults.find(varname) != VariantDefaults.end())
+              fens = VariantDefaults.at(varname);
+          else
+              fens.push_back(variant->startFen);
+      }
       else
           fens = Defaults;
   }

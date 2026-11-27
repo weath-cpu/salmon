@@ -106,31 +106,27 @@ void MovePicker::score() {
 
   for (auto& m : *this)
   {
-      // Material a move effect gains on its way is as good as a capture
-      const int effectValue = int(pos.effect_value(m));
-
       if constexpr (Type == CAPTURES)
+          // Material a move effect gains on its way is as good as a capture
           m.value =  int(PieceValue[MG][pos.piece_on(to_sq(m))]) * 6
                    + (*gateHistory)[pos.side_to_move()][gating_square(m)]
                    + (*captureHistory)[pos.moved_piece(m)][to_sq(m)][type_of(pos.piece_on(to_sq(m)))]
-                   + 6 * effectValue;
+                   + 6 * int(pos.effect_value(m));
 
       else if constexpr (Type == QUIETS)
-          // Moves with a move effect are generated as quiet moves when they
-          // land on an empty square, so they need to be sorted ahead of all
-          // other quiets
+          // Effect moves that gain material are not part of the quiet moves
           m.value =      (*mainHistory)[pos.side_to_move()][from_to(m)]
                    +     (*gateHistory)[pos.side_to_move()][gating_square(m)]
                    + 2 * (*continuationHistory[0])[history_slot(pos.moved_piece(m))][to_sq(m)]
                    +     (*continuationHistory[1])[history_slot(pos.moved_piece(m))][to_sq(m)]
                    +     (*continuationHistory[3])[history_slot(pos.moved_piece(m))][to_sq(m)]
                    +     (*continuationHistory[5])[history_slot(pos.moved_piece(m))][to_sq(m)]
-                   + (ply < MAX_LPH ? std::min(4, depth / 3) * (*lowPlyHistory)[ply][from_to(m)] : 0)
-                   + (pos.effect_piece(type_of(pos.moved_piece(m)))
-                        ? (1 << 20) + 6 * effectValue : 0);
+                   + (ply < MAX_LPH ? std::min(4, depth / 3) * (*lowPlyHistory)[ply][from_to(m)] : 0);
 
       else // Type == EVASIONS
       {
+          const int effectValue = int(pos.effect_value(m));
+
           if (pos.capture(m))
               m.value =  PieceValue[MG][pos.piece_on(to_sq(m))]
                        - Value(type_of(pos.moved_piece(m)))
