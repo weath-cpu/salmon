@@ -1705,6 +1705,14 @@ bool Position::gives_check(Move m) const {
       && attackers_to(square<KING>(~sideToMove), occupied, sideToMove, janggiCannons) & occupied)
       return true;
 
+  // Pieces flipped by a move effect change sides, so they can give check
+  for (Bitboard b = flipped_squares(m); b; )
+  {
+      Square s = pop_lsb(b);
+      if (attacks_bb(sideToMove, type_of(piece_on(s)), s, occupied) & square<KING>(~sideToMove))
+          return true;
+  }
+
   // Is there a check by gated pieces?
   if (    is_gating(m)
       && attacks_bb(sideToMove, gating_type(m), gating_square(m), (pieces() ^ from) | to) & square<KING>(~sideToMove))

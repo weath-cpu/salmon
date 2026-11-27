@@ -10,6 +10,10 @@
   generates the pseudo legal moves of a few positions and requires both
   functions to agree for them, and it checks the number of legal moves so that
   a wrong agreement (e.g. both rejecting a legal move) is caught as well.
+
+  For the same reason the test compares gives_check() with the checkers on the
+  board after every legal move, since a sweep can open a line to the enemy king
+  and a flipped piece can give check for the moving side.
 */
 
 #include <iostream>
@@ -46,6 +50,8 @@ const PositionTest positions[] = {
   { "flipper", "7k/8/8/A7/1b5b/8/8/4K3 w - - 0 1", 3 },
   { "tank", "7k/8/8/8/Nb2n3/8/8/4K3 w - - 0 1", 7 },
   { "tank", "4r2k/8/8/8/N3p3/8/8/4K3 w - - 0 1", 16 }, // sweep opens the rook's line
+  { "tank", "4k3/8/8/8/N3p3/8/8/K3R3 w - - 0 1", 25 },   // sweep opens the own line
+  { "flipper", "4k3/8/5n2/8/3A4/8/8/K7 w - - 0 1", 15 }, // flipped knight gives check
   { "extinction-effects", "K6k/8/8/8/T1r5/8/8/2Q5 w - - 0 1", 20 },
   { "extinction-effects", "1k6/8/4Q3/8/2b5/8/8/5A1K w - - 0 1", 20 },
 };
@@ -114,11 +120,35 @@ int main(int argc, char* argv[]) {
           ++failures;
       }
 
-      int legalMoves = int(MoveList<LEGAL>(pos).size());
-      if (legalMoves != test.legalMoves)
+      MoveList<LEGAL> legalMoves(pos);
+      if (int(legalMoves.size()) != test.legalMoves)
       {
           std::cerr << "unexpected number of legal moves for " << test.variant << " " << test.fen
-                    << ": " << legalMoves << " instead of " << test.legalMoves << std::endl;
+                    << ": " << legalMoves.size() << " instead of " << test.legalMoves << std::endl;
+          ++failures;
+      }
+
+      // The check status after the move is the ground truth that gives_check()
+      // has to predict, taking the move effect into account
+      const Color us = pos.side_to_move();
+      const Color them = ~us;
+
+      for (Move m : legalMoves)
+      {
+          const bool predicted = pos.gives_check(m);
+
+          StateInfo moveState{};
+          pos.do_move(m, moveState);
+          const bool actual =    pos.count<KING>(them)
+                              && (pos.attackers_to(pos.square<KING>(them)) & pos.pieces(us));
+          pos.undo_move(m);
+
+          if (predicted == actual)
+              continue;
+
+          std::cerr << "gives_check() is wrong for " << test.variant << " " << test.fen << " "
+                    << UCI::move(pos, m) << ": gives_check=" << predicted << " actual=" << actual
+                    << std::endl;
           ++failures;
       }
   }
