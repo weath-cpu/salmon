@@ -86,6 +86,10 @@ jobs:
         run: |
           ../tests/pseudo_legal.sh ARCH=x86-64 largeboards=yes debug=yes
 
+      - name: Test effect captures
+        run: |
+          ../tests/effect_captures.sh ARCH=x86-64 largeboards=yes debug=yes
+
       - name: Test variant bench
         run: |
           ./stockfish bench xiangqi

@@ -846,7 +846,7 @@ net:
 
 # clean binaries and objects
 objclean:
-	@rm -f $(EXE) pseudo_legal_test *.o ./syzygy/*.o ./nnue/*.o ./nnue/features/*.o
+	@rm -f $(EXE) pseudo_legal_test effect_captures_test *.o ./syzygy/*.o ./nnue/*.o ./nnue/features/*.o
 
 # clean auxiliary profiling files
 profileclean:
@@ -872,6 +872,14 @@ pseudo_legal_test: $(filter-out main.o,$(OBJS)) pseudo_legal_test.o
 	+$(CXX) -o $@ $(filter-out main.o,$(OBJS)) pseudo_legal_test.o $(LDFLAGS)
 
 pseudo_legal_test.o: ../tests/pseudo_legal.cpp
+	$(CXX) $(CXXFLAGS) -I. -c -o $@ $<
+
+# Test that moves whose move effect gains material are ordered and searched like
+# captures, built from the objects of the engine for the same configuration
+effect_captures_test: $(filter-out main.o,$(OBJS)) effect_captures_test.o
+	+$(CXX) -o $@ $(filter-out main.o,$(OBJS)) effect_captures_test.o $(LDFLAGS)
+
+effect_captures_test.o: ../tests/effect_captures.cpp
 	$(CXX) $(CXXFLAGS) -I. -c -o $@ $<
 
 config-sanity: $(load_net)

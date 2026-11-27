@@ -184,6 +184,9 @@ top:
   case QCAPTURE_INIT:
       cur = endBadCaptures = moves;
       endMoves = generate<CAPTURES>(pos, cur);
+      // Moves whose move effect gains material are searched like captures, so
+      // that the quiescence search sees them
+      endMoves = generate_effect_captures(pos, endMoves);
 
       score<CAPTURES>();
       ++stage;
@@ -221,6 +224,11 @@ top:
       {
           cur = endBadCaptures;
           endMoves = generate<QUIETS>(pos, cur);
+
+          // The effect captures were returned by the capture stages already
+          endMoves = std::remove_if(cur, endMoves, [&](const ExtMove& m) {
+              return pos.effect_value(m) > VALUE_ZERO;
+          });
 
           score<QUIETS>();
           partial_insertion_sort(cur, endMoves, -3000 * depth);
@@ -275,6 +283,11 @@ top:
   case QCHECK_INIT:
       cur = moves;
       endMoves = generate<QUIET_CHECKS>(pos, cur);
+
+      // The effect captures were returned by the capture stage already
+      endMoves = std::remove_if(cur, endMoves, [&](const ExtMove& m) {
+          return pos.effect_value(m) > VALUE_ZERO;
+      });
 
       ++stage;
       [[fallthrough]];

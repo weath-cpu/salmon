@@ -55,6 +55,12 @@ inline bool operator<(const ExtMove& f, const ExtMove& s) {
 template<GenType>
 ExtMove* generate(const Position& pos, ExtMove* moveList);
 
+/// generate_effect_captures() appends the pseudo legal moves of pieces with a
+/// move effect that gain material without capturing on the destination square,
+/// e.g. a sweep removing a rook on its way. generate<CAPTURES>() does not
+/// produce them, since it only looks at the destination square.
+ExtMove* generate_effect_captures(const Position& pos, ExtMove* moveList);
+
 /// acquire_move_buffer() and release_move_buffer() hand out buffers of MAX_MOVES
 /// moves from a per-thread pool. Buffers have to be released in reverse order.
 ExtMove* acquire_move_buffer();

@@ -2838,13 +2838,20 @@ Value Position::effect_value(Move m) const {
       return result;
   }
 
+  const bool flips = flip_piece(moved);
+
   for (Bitboard b = transformed_squares(m); b; )
   {
       Square s = pop_lsb(b);
       Piece pc = piece_on(s);
-      Piece into = flip_piece(moved) ? ~pc : make_piece(color_of(pc), morph_target(moved));
-      if (into != pc)
-          result += CapturePieceValue[MG][into] - CapturePieceValue[MG][pc];
+      Piece into = flips ? ~pc : make_piece(color_of(pc), morph_target(moved));
+      if (into == pc)
+          continue;
+
+      // A flipped piece changes sides and is gained completely, a morphed piece
+      // stays with its owner and only changes its value in place
+      result += flips ? CapturePieceValue[MG][into]
+                      : CapturePieceValue[MG][into] - CapturePieceValue[MG][pc];
   }
 
   return result;

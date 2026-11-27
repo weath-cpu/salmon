@@ -525,6 +525,39 @@ template ExtMove* generate<QUIET_CHECKS>(const Position&, ExtMove*);
 template ExtMove* generate<NON_EVASIONS>(const Position&, ExtMove*);
 
 
+/// generate_effect_captures() appends the moves of pieces with a move effect
+/// that gain material by their effect instead of by capturing on the target
+/// square, so that the search can treat them like captures.
+
+ExtMove* generate_effect_captures(const Position& pos, ExtMove* moveList) {
+
+  const PieceSet effectPieces = pos.effect_types();
+
+  if (!effectPieces)
+      return moveList;
+
+  const Color us = pos.side_to_move();
+  const Bitboard target = ~pos.pieces() & pos.board_bb();
+  ExtMove* first = moveList;
+
+  for (PieceSet ps = effectPieces; ps;)
+  {
+      const PieceType pt = pop_lsb(ps);
+      moveList = us == WHITE ? generate_moves<WHITE, EVASIONS>(pos, moveList, pt, target)
+                             : generate_moves<BLACK, EVASIONS>(pos, moveList, pt, target);
+  }
+
+  // Effect moves without a gain on the way stay quiet moves, they are generated
+  // by generate<QUIETS>()
+  ExtMove* end = first;
+  for (ExtMove* m = first; m != moveList; ++m)
+      if (pos.effect_value(*m) > VALUE_ZERO)
+          *end++ = *m;
+
+  return end;
+}
+
+
 /// generate<LEGAL> generates all the legal moves in the given position
 
 template<>

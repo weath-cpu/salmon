@@ -1132,7 +1132,9 @@ moves_loop: // When in check, search starts from here
           (ss+1)->pv = nullptr;
 
       extension = 0;
-      captureOrPromotion = pos.capture_or_promotion(move);
+      // A move effect that gains material counts as a capture for the search
+      captureOrPromotion =    pos.capture_or_promotion(move)
+                          || pos.effect_value(move) > VALUE_ZERO;
       movedPiece = pos.moved_piece(move);
       givesCheck = pos.gives_check(move);
 
@@ -1644,7 +1646,9 @@ moves_loop: // When in check, search starts from here
       assert(is_ok(move));
 
       givesCheck = pos.gives_check(move);
-      captureOrPromotion = pos.capture_or_promotion(move);
+      // A move effect that gains material counts as a capture for the search
+      captureOrPromotion =    pos.capture_or_promotion(move)
+                          || pos.effect_value(move) > VALUE_ZERO;
 
       moveCount++;
 
@@ -1661,7 +1665,8 @@ moves_loop: // When in check, search starts from here
           if (moveCount > 2)
               continue;
 
-          futilityValue = futilityBase + PieceValue[EG][pos.piece_on(to_sq(move))];
+          futilityValue = futilityBase + PieceValue[EG][pos.piece_on(to_sq(move))]
+                                       + pos.effect_value(move);
 
           if (futilityValue <= alpha)
           {
