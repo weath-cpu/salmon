@@ -1,13 +1,15 @@
 /*
   Check the contract between Position::pseudo_legal() and Position::legal() for
-  moves of pieces with a morph move effect.
+  moves of pieces with a move effect.
 
-  A morph replaces the type of the pieces it passes, which can expose the own
-  king or rescue it from a check, so such moves have to be judged completely
-  instead of being accepted as pseudo legal. The test generates the pseudo
-  legal moves of a few positions and requires both functions to agree for them,
-  and it checks the number of legal moves so that a wrong agreement (e.g. both
-  rejecting a legal move) is caught as well.
+  A move effect can change the attack situation around the own king in ways the
+  piece movement rules do not show: a morph replaces the type of the pieces it
+  passes, which can expose the own king or rescue it from a check, and a sweep
+  can remove a piece that blocked an enemy slider. Therefore such moves have to
+  be judged completely instead of being accepted as pseudo legal. The test
+  generates the pseudo legal moves of a few positions and requires both
+  functions to agree for them, and it checks the number of legal moves so that
+  a wrong agreement (e.g. both rejecting a legal move) is caught as well.
 */
 
 #include <iostream>
@@ -43,6 +45,7 @@ const PositionTest positions[] = {
   { "converter", "k7/8/8/8/8/8/3p4/K3C3 w - - 0 1", 16 },
   { "flipper", "7k/8/8/A7/1b5b/8/8/4K3 w - - 0 1", 3 },
   { "tank", "7k/8/8/8/Nb2n3/8/8/4K3 w - - 0 1", 7 },
+  { "tank", "4r2k/8/8/8/N3p3/8/8/4K3 w - - 0 1", 16 }, // sweep opens the rook's line
   { "extinction-effects", "K6k/8/8/8/T1r5/8/8/2Q5 w - - 0 1", 20 },
   { "extinction-effects", "1k6/8/4Q3/8/2b5/8/8/5A1K w - - 0 1", 20 },
 };
@@ -97,7 +100,7 @@ int main(int argc, char* argv[]) {
 
       for (Move m : pseudoLegalMoves)
       {
-          if (!pos.morph_piece(type_of(pos.moved_piece(m))))
+          if (!pos.effect_piece(type_of(pos.moved_piece(m))))
               continue;
 
           const bool pseudoLegal = pos.pseudo_legal(m);

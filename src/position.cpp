@@ -1646,9 +1646,11 @@ bool Position::pseudo_legal(const Move m) const {
           return false;
   }
 
-  // A morph changes the piece type in place, which can expose the own king or
-  // rescue it from a check in ways the evasion shape does not cover
-  if (morph_piece(type_of(pc)))
+  // A move effect can change the attack situation around the own king in ways
+  // the movement rules do not show: a morph changes the piece type in place,
+  // and a sweep can remove a piece that blocked an enemy slider or that checked
+  // the king. Only the full king safety test can judge these moves.
+  if (effect_piece(type_of(pc)))
       return legal(m);
 
   return true;
