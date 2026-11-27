@@ -1,7 +1,5 @@
 # salmon.
 
-ok i don't know what to put here uhhhh
+a poor attempt at expanding fairy stockfish's playing abilites
 
-this is a attempt to expand what fairy stockfish can play in terms of custom games
-
-i started. its ok.
+i mean it can play predator chess
