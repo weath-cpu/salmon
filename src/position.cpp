@@ -1812,6 +1812,10 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
   st->move = m;
   st->sweptSquares = 0;
   st->transformedSquares = 0;
+  // The pieces removed or replaced by a move effect are restored from the
+  // bycatch squares, which are not copied from the previous state
+  std::memset(st->unpromotedBycatch, 0, sizeof(st->unpromotedBycatch));
+  st->demotedBycatch = st->promotedBycatch = 0;
 
   // Increment ply counters. In particular, rule50 will be reset to zero later on
   // in case of a capture or a pawn move.
@@ -2261,8 +2265,6 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
   // Remove the blast pieces
   if (captured && (blast_on_capture() || var->petrifyOnCaptureTypes))
   {
-      std::memset(st->unpromotedBycatch, 0, sizeof(st->unpromotedBycatch));
-      st->demotedBycatch = st->promotedBycatch = 0;
       Bitboard blastImmune = 0;
       for (PieceSet ps = blast_immune_types(); ps;){
           PieceType pt = pop_lsb(ps);
