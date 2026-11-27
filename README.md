@@ -1,5 +1,5 @@
 # salmon.
 
-a poor attempt at expanding fairy stockfish's playing abilites
+an attempt at expanding fairy stockfish's playing abilites
 
-i mean it can play predator chess
+uh ooga booga ai go brrrr
